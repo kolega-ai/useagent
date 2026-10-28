@@ -269,7 +269,7 @@ not advertise the pair until it passes.
 | Item | Checked-in evidence |
 |---|---|
 | Repository license | `LICENSE` is the GNU AGPL v3.0 text. The root, backend and frontend manifests say `"license": "AGPL-3.0-only"`; the docs-site, desktop and `packages/*` manifests have no `license` field. Every manifest is `private`. |
-| Contributions and commercial terms | `CLA.md` is the contributor agreement; `.github/workflows/cla.yml` asks for and records signatures. `COMMERCIAL-LICENSE.md` says a separate commercial license is available and names a contact; it carries no terms. `TRADEMARKS.md` covers the name and logo. |
+| Contributions and commercial terms | `CLA.md` is the contributor agreement. `COMMERCIAL-LICENSE.md` says a separate commercial license is available and names a contact; it carries no terms. `TRADEMARKS.md` covers the name and logo. |
 | Third-party code | `NOTICE` lists every ported or vendored source with its license. Their license texts are in `third_party/licenses/`, except Beautiful UI's, which stays with its snapshot in `frontend/vendor/beautiful-ui/`. |
 
 No package has a license of its own: there is no AGPL-core/Apache-packages split.
