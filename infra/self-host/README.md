@@ -39,12 +39,13 @@ those scripts address the host by SSH and are provider-agnostic.
 
 ## Choosing a sandbox provider
 
-Agent runs execute inside isolated Linux sandboxes. Two providers sit behind
-one contract (`SANDBOX_PROVIDER`):
+Agent runs execute inside isolated Linux sandboxes. Providers sit behind one
+contract (`SANDBOX_PROVIDER`):
 
 | Provider | What it is | Host requirements |
 |---|---|---|
 | **Daytona** (`SANDBOX_PROVIDER=daytona`) | Managed sandboxes as a service - the sandbox fleet runs on Daytona's infrastructure. | None beyond an API key. Pairs with a control-plane host on **any** cloud (AWS, GCP, a small VM anywhere). The easiest start. |
+| **E2B Cloud** (`SANDBOX_PROVIDER=e2b`) | Managed isolated sandboxes created from E2B templates. | An E2B API key, a compatible native runtime template, and a sandbox-reachable gateway. |
 | **CubeSandbox** (`SANDBOX_PROVIDER=cube`) | Self-hosted sandbox runtime (Docker-based, E2B-compatible protocol) - the sandbox fleet runs on your own hardware. | A beefy host or separate machine (the reference deployment uses a dedicated Hetzner server), a baked sandbox template, and the cube-* sandbox services. Full data locality, no per-sandbox SaaS costs. |
 
 Start with Daytona to get running quickly; move to CubeSandbox when you want
@@ -82,8 +83,8 @@ variables on later deploys. The long-running backend never enables public signup
 
 ## Repository-specific sandbox images
 
-A repository-backed project can name a separate Daytona snapshot, Cube template,
-Box snapshot and local Docker image for new threads. The first selected
+A repository-backed project can name a separate Daytona snapshot, E2B or Cube
+template, Box snapshot and local Docker image for new threads. The first selected
 repository determines the image for a multi-repository thread. If that provider
 has no repository-specific image, UseAgent uses its existing default. A thread
 records its selected image and keeps its retained workspace when settings change.
@@ -142,7 +143,7 @@ put tokens or credentials into the snapshot or its Git remote.
 As an account listed in `OPERATOR_ACCOUNTS`, open **Settings > Infrastructure > Repository images**, enter
 the image beside the repository and provider, and save. Clear the field and save to
 remove it. The project API accepts `daytona_snapshot`, `cube_snapshot`,
-`box_snapshot` and `local_image` as strings or `null` in `PATCH /api/projects/:id`.
+`box_snapshot`, `e2b_template` and `local_image` as strings or `null` in `PATCH /api/projects/:id`.
 Name and digest syntax are checked when saved; availability
 is checked when the selected Daytona account provisions a sandbox. An absent,
 inaccessible or failed explicit snapshot fails the run with the snapshot name;
@@ -161,6 +162,58 @@ the repository setting. New threads pin the new name; existing threads retain
 their image choice and workspace. Keep older names available while they may be
 needed for replacement. Do not replace a snapshot in place if older threads
 need its original contents.
+
+### E2B Cloud templates
+
+Configure `SANDBOX_PROVIDER=e2b`, `E2B_API_KEY` and `E2B_TEMPLATE_ID` on the
+backend. `RUNTIME_E2B_TEMPLATE_ID` optionally overrides the default template for
+native agent runs. The E2B credential stays on the control plane. The gateway
+at `GATEWAY_PUBLIC_URL` must be reachable over HTTPS from E2B sandboxes.
+
+Build a native template once from E2B's `base` template, using the staged
+runtime assets and the same pinned agent recipe as the other providers. Run
+this from the repository root after installing backend dependencies and
+staging the native runtime (`bun run deploy/stage-native-runtime.ts`):
+
+```sh
+# Export E2B_API_KEY, GATEWAY_PUBLIC_URL and PROVIDER_GATEWAY_SECRET locally.
+# The template memory must meet SANDBOX_MEMORY_GIB.
+docker run --rm --platform linux/amd64 \
+  -e E2B_API_KEY -e GATEWAY_PUBLIC_URL -e PROVIDER_GATEWAY_SECRET \
+  -v "$PWD:/repo" -w /repo/backend oven/bun:1.3.14 \
+  bun run scripts/bake-e2b-template.ts --name useagent-runtime-v1 --cpu 2 --memory-mb 8192
+```
+
+The script requires the E2B account to support the chosen CPU and memory. If
+your account supports 4 GiB sandboxes, build with `--memory-mb 4096` and set
+both `SANDBOX_MEMORY_GIB=4` and `FLEET_SANDBOX_MEMORY_MIB=4096` on the backend.
+It installs the pinned Kolega Code environment as part of the native recipe.
+Do not bake provider credentials, repository tokens or session state into a
+template.
+
+For a repository-specific template, build a new E2B template from this native
+template, then clone the clean repository into `/root/work/OWNER/REPO` and
+install its dependencies during the build. For example, with the pinned `e2b`
+SDK installed in `packages/sandbox-e2b`, adapt this script for a public Bun
+repository:
+
+```ts
+import { Template } from "e2b";
+
+const template = Template().fromTemplate("useagent-runtime-v1").setUser("root")
+  .runCmd("mkdir -p /root/work/OWNER && git clone https://github.com/OWNER/REPO.git /root/work/OWNER/REPO")
+  .runCmd("cd /root/work/OWNER/REPO && bun install --frozen-lockfile");
+await Template.build(template, "repo-deps-v1", { cpuCount: 2, memoryMB: 8192 });
+```
+
+Run the script from `packages/sandbox-e2b` with `E2B_API_KEY` in the trusted
+build process environment. Select the resulting name under **Settings >
+Infrastructure > Repository images > E2B template**. Each thread receives an
+independent E2B sandbox. Use a new template name when dependencies change;
+E2B template names and tags can be reassigned, so do not rebuild an existing
+name while older threads may need its original contents. Retained sandboxes are
+not switched when the repository setting changes. E2B account limits and
+pause-retention policies also apply to these sandboxes.
 
 ## Kolega Code
 
@@ -192,7 +245,8 @@ engine. For a custom root-based snapshot, install that same lock at
 
 ```sh
 python3 -m venv /opt/useagent/acp-agent
-/opt/useagent/acp-agent/bin/pip install --only-binary=:all: --require-hashes -r requirements.txt
+/opt/useagent/acp-agent/bin/pip install --no-deps --only-binary=:all: --require-hashes -r requirements.txt
+/opt/useagent/acp-agent/bin/pip check
 /opt/useagent/acp-agent/bin/kolega-code --version
 ```
 

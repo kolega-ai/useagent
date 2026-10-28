@@ -1,0 +1,13 @@
+{
+  "name": "@useagent/sandbox-e2b-transport",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "bun test" },
+  "dependencies": {
+    "@useagent/sandbox-contract": "file:../sandbox-contract",
+    "e2b": "2.38.3"
+  },
+  "devDependencies": { "@types/bun": "^1.3.14" }
+}

@@ -66,7 +66,7 @@ describe("sandbox provider selection", () => {
 
   test("rejects unknown providers instead of silently falling back", () => {
     expect(() => sandboxProviderKind({ SANDBOX_PROVIDER: "other" })).toThrow(
-      "SANDBOX_PROVIDER must be daytona, cube, box",
+      "SANDBOX_PROVIDER must be daytona, cube, box, e2b",
     );
   });
 

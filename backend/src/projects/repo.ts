@@ -69,7 +69,7 @@ export async function ensureProject(
     const [updated] = await exec
       .update(projects)
       .set({ repoFullName, updatedAt: new Date() })
-      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId), isNull(projects.daytonaSnapshot), isNull(projects.cubeSnapshot), isNull(projects.boxSnapshot), isNull(projects.localImage)))
+      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId), isNull(projects.daytonaSnapshot), isNull(projects.cubeSnapshot), isNull(projects.boxSnapshot), isNull(projects.e2bTemplate), isNull(projects.localImage)))
       .returning();
     if (!updated) throw new RepositorySnapshotConflictError();
     return updated;
@@ -116,6 +116,7 @@ export async function updateProjectForOrg(
     daytonaSnapshot?: string | null;
     cubeSnapshot?: string | null;
     boxSnapshot?: string | null;
+    e2bTemplate?: string | null;
     localImage?: string | null;
     /** Repository identity observed before a snapshot write. */
     expectedRepoFullName?: string | null;
@@ -128,6 +129,7 @@ export async function updateProjectForOrg(
   if (patch.daytonaSnapshot !== undefined) set.daytonaSnapshot = patch.daytonaSnapshot;
   if (patch.cubeSnapshot !== undefined) set.cubeSnapshot = patch.cubeSnapshot;
   if (patch.boxSnapshot !== undefined) set.boxSnapshot = patch.boxSnapshot;
+  if (patch.e2bTemplate !== undefined) set.e2bTemplate = patch.e2bTemplate;
   if (patch.localImage !== undefined) set.localImage = patch.localImage;
   const [row] = await db
     .update(projects)

@@ -196,6 +196,12 @@ ${desktopToolchainCommand(CUBE_LAYOUT)}
     expect(steps.map((step) => step.name)).not.toContain("claude");
   });
 
+  test("installs the locked agent dependency graph without resolving newer versions", () => {
+    const agent = nativeImageSteps(CUBE_LAYOUT, inputs()).find((step) => step.name === "acp-agent")!;
+    expect(agent.command).toContain("--no-deps --only-binary=:all: --require-hashes");
+    expect(agent.command).toContain("/opt/useagent/acp-agent/bin/pip' check");
+  });
+
   test("place files under the layout's home and probe before installing", () => {
     const steps = nativeImageSteps(BOX_LAYOUT, inputs());
     const runtime = steps.find((step) => step.name === "native-runtime")!;

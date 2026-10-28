@@ -35,6 +35,8 @@
     "@useagent/sandbox-contract": "file:../packages/sandbox-contract",
     "@useagent/sandbox-cube": "file:../packages/sandbox-cube",
     "@useagent/sandbox-daytona": "file:../packages/sandbox-daytona",
+    "@useagent/sandbox-e2b": "file:../packages/sandbox-e2b",
+    "@useagent/sandbox-e2b-transport": "file:../packages/sandbox-e2b-transport",
     "@useagent/sandbox-local": "file:../packages/sandbox-local",
     "better-auth": "1.6.25",
     "drizzle-orm": "^0.45.2",

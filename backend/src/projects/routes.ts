@@ -23,6 +23,7 @@ function toProject(project: ProjectRecord) {
     daytona_snapshot: project.daytonaSnapshot,
     cube_snapshot: project.cubeSnapshot,
     box_snapshot: project.boxSnapshot,
+    e2b_template: project.e2bTemplate,
     local_image: project.localImage,
     archived: project.archived,
     sort_order: project.sortOrder,
@@ -66,7 +67,7 @@ projectsRoutes.patch("/:id", async (c) => {
   if (body.display_name !== undefined && !displayName) {
     return c.json({ error: "display_name cannot be empty" }, 400);
   }
-  const imageFields = ["daytona_snapshot", "cube_snapshot", "box_snapshot", "local_image"] as const;
+  const imageFields = ["daytona_snapshot", "cube_snapshot", "box_snapshot", "e2b_template", "local_image"] as const;
   const changingImage = imageFields.some((field) => body[field] !== undefined);
   if (changingImage && !(await requestFromOperator(c))) return c.json({ error: "not_found" }, 404);
   for (const field of imageFields) {
@@ -85,6 +86,7 @@ projectsRoutes.patch("/:id", async (c) => {
     daytonaSnapshot: body.daytona_snapshot as string | null | undefined,
     cubeSnapshot: body.cube_snapshot as string | null | undefined,
     boxSnapshot: body.box_snapshot as string | null | undefined,
+    e2bTemplate: body.e2b_template as string | null | undefined,
     localImage: body.local_image as string | null | undefined,
     expectedRepoFullName: changingImage ? current.repoFullName : undefined,
   });

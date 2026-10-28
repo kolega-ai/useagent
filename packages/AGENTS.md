@@ -6,7 +6,7 @@ rules: [../AGENTS.md](../AGENTS.md).
 Every package is `private` and ESM, and apps import its TypeScript source
 directly (no build step); `runner` and `cli` are binaries instead (`bin`
 entries; `cd packages/runner && bun run build` builds the runner's). Each has
-`bun run typecheck` and `bun run test`; CI runs both for all 13 (`package-test`
+`bun run typecheck` and `bun run test`; CI runs both for all 15 (`package-test`
 in `.github/workflows/ci.yml`), and the root typecheck covers them too.
 
 | Package | What it is | Imported by |
@@ -16,7 +16,8 @@ in `.github/workflows/ci.yml`), and the root typecheck covers them too.
 | `artifact-workspace` | browser-safe artifact MIME constants and workpiece helpers | frontend, backend, agent-client, artifact-formats |
 | `artifact-formats` | DOCX, XLSX, PPTX and PDF rendering and bounded text extraction | backend |
 | `sandbox-contract` | the provider-neutral sandbox contract (types) and its shared conformance suite (`@useagent/sandbox-contract/conformance`) | backend, every plugin |
-| `sandbox-daytona`, `sandbox-cube`, `sandbox-box`, `sandbox-local` | one plugin per sandbox vendor; each owns its client, env config, credential check, preview auth and workspace layout | `backend/src/sandboxes/plugins.ts` |
+| `sandbox-daytona`, `sandbox-cube`, `sandbox-e2b`, `sandbox-box`, `sandbox-local` | one plugin per sandbox vendor; each owns its client, env config, credential check, preview auth and workspace layout | `backend/src/sandboxes/plugins.ts` |
+| `sandbox-e2b-transport` | shared process and filesystem transport for providers using the E2B SDK protocol | Cube and E2B plugins |
 | `runner-protocol` | the runner-to-plane wire: one outbound WebSocket split into RPC calls and byte streams | backend, runner, sandbox-local |
 | `runner` | the per-machine runner that lends a developer's machine as a sandbox provider (built into binaries) | the desktop app bundles its binary |
 | `cli` | the `useagent` CLI and its MCP server | nothing; a `bin` entry, not published yet |

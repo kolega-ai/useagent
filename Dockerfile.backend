@@ -36,6 +36,8 @@ COPY packages/artifact-workspace/package.json ./packages/artifact-workspace/
 COPY packages/sandbox-contract/package.json ./packages/sandbox-contract/
 COPY packages/sandbox-daytona/package.json ./packages/sandbox-daytona/
 COPY packages/sandbox-cube/package.json ./packages/sandbox-cube/
+COPY packages/sandbox-e2b/package.json ./packages/sandbox-e2b/
+COPY packages/sandbox-e2b-transport/package.json ./packages/sandbox-e2b-transport/
 COPY packages/sandbox-box/package.json ./packages/sandbox-box/
 COPY packages/runner-protocol/package.json ./packages/runner-protocol/
 COPY packages/sandbox-local/package.json ./packages/sandbox-local/
@@ -76,6 +78,8 @@ COPY packages/artifact-workspace ./packages/artifact-workspace
 COPY packages/sandbox-contract ./packages/sandbox-contract
 COPY packages/sandbox-daytona ./packages/sandbox-daytona
 COPY packages/sandbox-cube ./packages/sandbox-cube
+COPY packages/sandbox-e2b ./packages/sandbox-e2b
+COPY packages/sandbox-e2b-transport ./packages/sandbox-e2b-transport
 COPY packages/sandbox-box ./packages/sandbox-box
 COPY packages/runner-protocol ./packages/runner-protocol
 COPY packages/sandbox-local ./packages/sandbox-local
@@ -104,7 +108,7 @@ RUN set -eux; \
 
 RUN ln -s backend/node_modules /app/node_modules \
     && ln -s ../lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex \
-    && for package in agent-client agent-harness artifact-formats artifact-workspace sandbox-contract sandbox-daytona sandbox-cube sandbox-box runner-protocol sandbox-local; do \
+    && for package in agent-client agent-harness artifact-formats artifact-workspace sandbox-contract sandbox-daytona sandbox-cube sandbox-e2b sandbox-e2b-transport sandbox-box runner-protocol sandbox-local; do \
       rm -rf "/app/backend/node_modules/@useagent/${package}"; \
       ln -s "../../../packages/${package}" "/app/backend/node_modules/@useagent/${package}"; \
     done \
