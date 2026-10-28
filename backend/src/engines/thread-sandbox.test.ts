@@ -333,7 +333,7 @@ describe("shared thread sandbox lease", () => {
 });
 
 describe("repository image allocation", () => {
-  test("fresh threads use their pinned Daytona image and separate allocations; other providers keep their own template", async () => {
+  test("each provider uses its own pinned repository image and fresh threads remain separate", async () => {
     const requested: string[] = [];
     const persisted: unknown[] = [];
     let next = 0;
@@ -346,7 +346,7 @@ describe("repository image allocation", () => {
         return { id: `${sandboxPrefix}-${next}`, cpu: 2, memory: 8 } as SandboxHandle;
       },
     } as unknown as SandboxBinding["provider"];
-    const makeBinding = (kind: "daytona" | "box"): SandboxBinding => ({
+    const makeBinding = (kind: "daytona" | "box" | "cube" | "local"): SandboxBinding => ({
       kind, provider, snapshot: kind === "box" ? "box-image" : null,
       credential: "user", userId: "owner", logins: [],
     });
@@ -359,9 +359,9 @@ describe("repository image allocation", () => {
       priorSandboxSnapshot: async () => null,
       noteLostWorkspace: async () => false,
     };
-    const run = async (id: string, snapshot: string | null) => acquireThreadSandbox({
+    const run = async (id: string, snapshot: string | null, extra: Partial<EngineRunContext> = {}) => acquireThreadSandbox({
       runId: id, threadId: id, orgId: "org", repositorySnapshot: snapshot,
-      emit: async () => undefined,
+      emit: async () => undefined, ...extra,
     } as unknown as EngineRunContext, { snapshot: "default-image", chip: "runtime", warmPool: false }, dependencies);
     const first = await run("first", "repo-v1");
     const second = await run("second", "repo-v1");
@@ -371,10 +371,15 @@ describe("repository image allocation", () => {
     await run("fourth", null);
     binding = makeBinding("box");
     await run("fifth", "repo-v1");
+    await run("sixth", "wrong-daytona", { repositoryBoxSnapshot: "repo-box" });
+    binding = makeBinding("cube");
+    await run("seventh", "wrong-daytona", { repositoryCubeSnapshot: "repo-cube" });
+    binding = makeBinding("local");
+    await run("eighth", "wrong-daytona", { repositoryLocalImage: "repo-local" });
     expect(first.sandbox.id).not.toBe(second.sandbox.id);
-    expect(requested).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image", "box-image"]);
+    expect(requested).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image", "box-image", "repo-box", "repo-cube", "repo-local"]);
     expect(persisted.slice(0, 4).map((row) => (row as unknown[])[3])).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image"]);
-    for (const [index, id] of ["first", "second", "third", "fourth", "fifth"].entries()) {
+    for (const [index, id] of ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"].entries()) {
       forgetLiveThreadSandbox(id, `${sandboxPrefix}-${index + 1}`);
     }
   });
@@ -397,5 +402,22 @@ describe("repository image allocation", () => {
       });
     expect(used).toBe("repo-v1");
     forgetLiveThreadSandbox("root", "replacement");
+  });
+
+  test("a repository-specific Cube template bypasses the default warm pool", async () => {
+    const binding: SandboxBinding = { kind: "cube", provider: {} as SandboxBinding["provider"], snapshot: null, credential: "env", userId: null, logins: [] };
+    let used = "";
+    await acquireThreadSandbox({ runId: "cube-specific", threadId: "cube-specific", orgId: "org", repositoryCubeSnapshot: "repository-template", emit: async () => undefined } as unknown as EngineRunContext,
+      { snapshot: "default-template", chip: "runtime", warmPool: "default-pool" }, {
+        retained: async () => null, bindingForThread: async () => binding, bindingForRun: async () => binding,
+        persist: async () => {}, priorSandboxSnapshot: async () => null,
+        provision: async (input) => {
+          used = input.snapshot;
+          expect(input.requireSnapshot).toBe(true);
+          return { sandbox: { id: "cube-specific-sandbox", cpu: 2, memory: 8 } as SandboxHandle, fromTemplate: true };
+        },
+      });
+    expect(used).toBe("repository-template");
+    forgetLiveThreadSandbox("cube-specific", "cube-specific-sandbox");
   });
 });

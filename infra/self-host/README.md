@@ -80,12 +80,27 @@ user and personal organization through the application auth hooks, then deletes
 the transient credential file. Reusing the same email is idempotent. Omit both
 variables on later deploys. The long-running backend never enables public signup.
 
-## Repository-specific Daytona snapshots
+## Repository-specific sandbox images
 
-A repository-backed project can name a Daytona snapshot for new threads. The
-first selected repository determines the snapshot for a multi-repository
-thread. If it has no snapshot, UseAgent uses the existing runtime/personal
-snapshot selection. Cube, Box, and local execution keep their own templates.
+A repository-backed project can name a separate Daytona snapshot, Cube template,
+Box snapshot and local Docker image for new threads. The first selected
+repository determines the image for a multi-repository thread. If that provider
+has no repository-specific image, UseAgent uses its existing default. A thread
+records its selected image and keeps its retained workspace when settings change.
+
+For Cube, register a template built from the normal native sandbox image with
+the repository's dependencies and enter its template ID. For Box, create a named
+snapshot from a clean compatible workspace and enter the snapshot name. For
+local runners, build and publish a compatible image containing the dependencies,
+then enter its immutable `registry.example/team/image:tag@sha256:<digest>`
+reference. The runner pulls and verifies that digest; a mutable tag alone is
+rejected. The deployment still needs its default `SANDBOX_IMAGE_REF` and
+`SANDBOX_IMAGE_DIGEST` so the runner can enroll and become ready. Registries
+used for repository images must be reachable by the runner.
+Repository-specific Cube templates do not use the default warm pool. Ensure all
+custom images include the native runtime and pinned agent installation.
+
+### Preparing a Daytona repository snapshot
 
 Create a **cold filesystem snapshot** in the Daytona organization selected by
 the UseAgent sandbox credential. Start with a clean, compatible UseAgent runtime
@@ -121,10 +136,11 @@ Do not snapshot a live UseAgent thread: session journals, credentials, runtime
 capabilities and other private files must not be shared with new threads. Do not
 put tokens or credentials into the snapshot or its Git remote.
 
-As an account listed in `OPERATOR_ACCOUNTS`, open **Settings > Infrastructure > Repository snapshots**, enter
-the snapshot name beside the repository, and save. Clear the field and save to
-remove it. The project API also accepts `daytona_snapshot` as a string or
-`null` in `PATCH /api/projects/:id`. Name syntax is checked when saved; availability
+As an account listed in `OPERATOR_ACCOUNTS`, open **Settings > Infrastructure > Repository images**, enter
+the image beside the repository and provider, and save. Clear the field and save to
+remove it. The project API accepts `daytona_snapshot`, `cube_snapshot`,
+`box_snapshot` and `local_image` as strings or `null` in `PATCH /api/projects/:id`.
+Name and digest syntax are checked when saved; availability
 is checked when the selected Daytona account provisions a sandbox. An absent,
 inaccessible or failed explicit snapshot fails the run with the snapshot name;
 it does not fall back to a different image.

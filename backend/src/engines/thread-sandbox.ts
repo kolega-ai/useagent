@@ -205,20 +205,21 @@ export async function acquireThreadSandbox(
     : await dependencies.bindingForRun(ctx));
   let sandbox: SandboxHandle | null = retained?.sandbox ?? null;
   let reused = sandbox !== null;
-  // Only Daytona consumes repository images. A prior allocation pins the
-  // effective image when a lost sandbox must be replaced.
+  // The selected provider consumes only its own repository image. A prior
+  // allocation pins the effective image when a lost sandbox is replaced.
   const supportsRepositorySnapshots = sandboxPlugin(binding.kind).supportsRepositorySnapshots === true;
   const priorSnapshot = supportsRepositorySnapshots && ctx.orgId && ctx.threadId
     ? await dependencies.priorSandboxSnapshot?.(ctx.orgId, ctx.threadId, binding.kind) ?? null
     : null;
-  const repositorySnapshot = supportsRepositorySnapshots ? ctx.repositorySnapshot ?? null : null;
+  const images = { daytona: ctx.repositorySnapshot, cube: ctx.repositoryCubeSnapshot, box: ctx.repositoryBoxSnapshot, local: ctx.repositoryLocalImage };
+  const repositorySnapshot = supportsRepositorySnapshots ? images[binding.kind] ?? null : null;
   let effectiveSnapshot = supportsRepositorySnapshots
     ? retained ? priorSnapshot : priorSnapshot ?? repositorySnapshot ?? snapshotForBinding(binding, options.snapshot)
     : null;
 
   if (!sandbox) {
     await ctx.emit({ kind: "task", label: "Provisioning cloud sandbox…", chip: options.chip });
-    if (binding.kind === "cube" && binding.credential === "env" && options.warmPool !== false) {
+    if (binding.kind === "cube" && binding.credential === "env" && options.warmPool !== false && repositorySnapshot === null && priorSnapshot === null) {
       const endWarmPool = ctx.timing?.begin(RUN_TIMING_STAGES.sandboxWarmPool);
       try {
         sandbox = await claimCubeWarmSandbox(options.warmPool || undefined);

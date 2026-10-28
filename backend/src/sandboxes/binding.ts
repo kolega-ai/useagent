@@ -99,7 +99,7 @@ function localBinding(runner: BoundRunner, logins: readonly string[], deps: Sand
   return {
     kind: "local",
     provider: build(""),
-    snapshot: null,
+    snapshot: config.image ? `${config.image.ref.split("@")[0]}@${config.image.digest}` : null,
     credential: "user",
     userId: runner.userId,
     connectionUpdatedAt: runner.enrolledAt,

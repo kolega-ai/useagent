@@ -8,6 +8,7 @@ export interface CubeApiConfig {
 /** Everything the control plane needs to run work on Cube. */
 export const cubePlugin: SandboxProviderPlugin<CubeApiConfig> = {
   kind: "cube",
+  supportsRepositorySnapshots: true,
   label: "Cube",
   credentialEnv: "CUBE_API_KEY",
   // A local Cube (loopback API, trusted ingress) runs without a key.

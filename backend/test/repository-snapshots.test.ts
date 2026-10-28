@@ -2,9 +2,34 @@ import { describe, expect, test } from "bun:test";
 import { createRun, getRun, getThreadSandboxSnapshot, setRunSandbox } from "../src/runs/repo";
 import { createOrgSession, joinOrg, json, uid } from "./helpers";
 
-type Project = { id: string; daytona_snapshot: string | null };
+type Project = { id: string; daytona_snapshot: string | null; cube_snapshot: string | null; box_snapshot: string | null; local_image: string | null };
 
 describe("repository snapshots", () => {
+  test("each provider's image is pinned on the thread and changes only affect new threads", async () => {
+    const owner = await createOrgSession("provider-images");
+    const outsider = await createOrgSession("provider-images-outsider");
+    const repo = `sample/${uid("images")}`;
+    const project = await json<Project>("/api/projects", { method: "POST", cookies: owner.cookies, body: { key: repo, repo_full_name: repo } });
+    const path = `/api/projects/${project.body.id}`;
+    const image = `registry.example/repo:v1@sha256:${"a".repeat(64)}`;
+    const patch = (cookies: string, body: Record<string, unknown>) => json<Project>(path, { method: "PATCH", cookies, body });
+    expect((await patch(outsider.cookies, { cube_snapshot: "other" })).status).toBe(404);
+    expect((await patch(owner.cookies, { local_image: "registry.example/repo:latest" })).status).toBe(400);
+    expect((await patch(owner.cookies, { local_image: `user:secret@host/repo@sha256:${"a".repeat(64)}` })).status).toBe(400);
+    const set = await patch(owner.cookies, { cube_snapshot: "cube-v1", box_snapshot: "box-v1", local_image: image });
+    expect(set.status).toBe(200);
+    const base = { prompt: "task", model: "mock", engine: "mock" as const, orgId: owner.orgId, userId: null, repos: [repo], memoryScope: "org" as const };
+    const first = uid("root");
+    await createRun({ ...base, id: first, threadId: first, parentRunId: null });
+    expect(await getRun(first)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryLocalImage: image });
+    expect((await patch(owner.cookies, { cube_snapshot: "cube-v2", box_snapshot: null, local_image: null })).status).toBe(200);
+    const reply = uid("reply");
+    await createRun({ ...base, id: reply, threadId: first, parentRunId: first });
+    expect(await getRun(reply)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryLocalImage: image });
+    const second = uid("root");
+    await createRun({ ...base, id: second, threadId: second, parentRunId: null });
+    expect(await getRun(second)).toMatchObject({ repositoryCubeSnapshot: "cube-v2", repositoryBoxSnapshot: null, repositoryLocalImage: null });
+  });
   test("the org can change or remove an image and new threads pin the value", async () => {
     const owner = await createOrgSession("snapshot-owner");
     const outsider = await createOrgSession("snapshot-outsider");

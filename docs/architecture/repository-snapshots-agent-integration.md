@@ -2,12 +2,12 @@
 
 Implementation plan and decisions:
 
-1. Store the optional Daytona image on the repository-backed project. Pin the
-   first selected repository's image on the root run, and inherit it for replies.
+1. Store optional provider-specific images on the repository-backed project. Pin the
+   first selected repository's images on the root run, and inherit them for replies.
    Record the actual image with the sandbox allocation. Existing threads keep
    their retained sandbox and legacy rows are not backfilled from current settings.
-2. Resolve images at the shared thread-sandbox allocation seam, only for Daytona.
-   The existing pool is Cube-only; Daytona creates a separate sandbox per thread.
+2. Resolve the selected provider's image at the shared thread-sandbox allocation seam.
+   Cube repository images bypass its default warm pool; every thread gets a separate sandbox.
    An explicit repository image must fail rather than fall back to the base image.
 3. Expose repository settings using the existing project API and settings surface.
    Validate image availability against the credential selected for allocation.

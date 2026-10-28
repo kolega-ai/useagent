@@ -778,6 +778,13 @@
       "when": 1792800000026,
       "tag": "0116_deepseek_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1792800000027,
+      "tag": "0117_repository_provider_images",
+      "breakpoints": true
     }
   ]
 }

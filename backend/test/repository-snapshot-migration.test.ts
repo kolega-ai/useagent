@@ -35,10 +35,10 @@ test("the previous deployment upgrades without changing existing projects or san
     await client.unsafe(`insert into projects (org_id, key, display_name, repo_full_name) values ('legacy-org', 'a/b', 'B', 'a/b')`);
     await client.unsafe(`insert into runs (id, org_id, prompt, model, engine, status, thread_id, sandbox_id, sandbox_provider) values ('legacy', 'legacy-org', 'task', 'mock', 'mock', 'completed', 'legacy', 'retained', 'daytona')`);
     await migrate(db, { migrationsFolder: migrations });
-    const projects = await client.unsafe(`select key, repo_full_name, daytona_snapshot from projects where org_id = 'legacy-org'`);
-    const runs = await client.unsafe(`select sandbox_id, sandbox_provider, repository_snapshot, sandbox_snapshot from runs where id = 'legacy'`);
-    expect([...projects]).toEqual([{ key: "a/b", repo_full_name: "a/b", daytona_snapshot: null }]);
-    expect([...runs]).toEqual([{ sandbox_id: "retained", sandbox_provider: "daytona", repository_snapshot: null, sandbox_snapshot: null }]);
+    const projects = await client.unsafe(`select key, repo_full_name, daytona_snapshot, cube_snapshot, box_snapshot, local_image from projects where org_id = 'legacy-org'`);
+    const runs = await client.unsafe(`select sandbox_id, sandbox_provider, repository_snapshot, sandbox_snapshot, repository_cube_snapshot, repository_box_snapshot, repository_local_image from runs where id = 'legacy'`);
+    expect([...projects]).toEqual([{ key: "a/b", repo_full_name: "a/b", daytona_snapshot: null, cube_snapshot: null, box_snapshot: null, local_image: null }]);
+    expect([...runs]).toEqual([{ sandbox_id: "retained", sandbox_provider: "daytona", repository_snapshot: null, sandbox_snapshot: null, repository_cube_snapshot: null, repository_box_snapshot: null, repository_local_image: null }]);
   } finally {
     if (client) await client.end();
     await admin.unsafe(`drop database if exists "${name}"`).catch(() => {});

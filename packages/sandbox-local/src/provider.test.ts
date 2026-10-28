@@ -53,6 +53,16 @@ function runner(overrides: Partial<Parameters<typeof fakeLink>[0]> = {}): FakeLi
 }
 
 describe("local provider", () => {
+  test("repository images use their own pinned digest and reject mutable or credential-bearing references", async () => {
+    const link = runner();
+    const provider = new LocalProvider(localProviderConfig(ENV, { runnerId: "rn1" }), { links: fakeLinkDirectory([link]) });
+    const custom = { ref: "registry.example/team/repo:v1", digest: "sha256:" + "b".repeat(64) };
+    await provider.create({ snapshot: `${custom.ref}@${custom.digest}` });
+    expect((link.calls[0]?.params as { image: unknown }).image).toEqual(custom);
+    await expect(provider.create({ snapshot: "registry.example/team/repo:latest" })).rejects.toThrow(/pinned/);
+    await expect(provider.create({ snapshot: `user:password@registry.example/repo@${custom.digest}` })).rejects.toThrow(/pinned/);
+    expect(link.calls).toHaveLength(1);
+  });
   test("creates on the selected runner with the deployment image, resources, logins and labels", async () => {
     const link = runner();
     const labels = memorySandboxLabelStore();

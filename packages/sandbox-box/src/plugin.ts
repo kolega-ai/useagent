@@ -27,6 +27,7 @@ export function boxApiConfig(apiKey: string, env: SandboxEnv): BoxApiConfig {
 /** Everything the control plane needs to run work on Box. */
 export const boxPlugin: SandboxProviderPlugin<BoxApiConfig> = {
   kind: "box",
+  supportsRepositorySnapshots: true,
   label: "Box",
   credentialEnv: "BOX_API_KEY",
   credentialRequired: true,
