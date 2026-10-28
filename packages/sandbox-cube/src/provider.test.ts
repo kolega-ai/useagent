@@ -368,6 +368,7 @@ describe("Cube sandbox provider", () => {
       onData: expect.any(Function),
       user: "root",
       timeoutMs: 0,
+      envs: { USEAGENT_PTY_ID: "terminal-1" },
     });
     expect(writes).toEqual([{ pid: 42, text: "printf 'CUBE_PTY_OK\\n'\n" }]);
     expect(await pty.waitForTermination()).toEqual({ exitCode: 0 });
@@ -520,6 +521,9 @@ describe("Cube sandbox provider", () => {
       ],
       run: async (command, options) => {
         calls.push({ command, options });
+        if ((options as { background?: boolean } | undefined)?.background) {
+          return { pid: 91, wait: async () => ({ exitCode: 0 }) };
+        }
         return { exitCode: 0, stderr: "", stdout: "" };
       },
       write: async (path, data) => {
@@ -538,9 +542,12 @@ describe("Cube sandbox provider", () => {
 
     expect(writes).toHaveLength(1);
     expect(writes[0]?.data).toBe("exec opencode serve");
-    expect(calls.at(-1)?.command).toMatch(/^nohup setsid sh .* <\/dev\/null >.* 2>&1 &$/);
+    expect(calls.at(-1)?.command).toMatch(/^sh .* 2>&1; code=\$\?; printf .*; exit "\$code"$/);
     expect(calls.at(-1)?.options).toEqual({
       user: "root",
+      background: true,
+      stdin: true,
+      timeoutMs: 0,
       envs: {
         USEAGENT_COMMAND_ID: result.cmdId,
         USEAGENT_SESSION_ID: "resident",
@@ -573,7 +580,7 @@ describe("Cube sandbox provider", () => {
           envs: { SKYNET_COMMAND_ID: "other-command", SKYNET_SESSION_ID: "other-session" },
           pid: 72,
         },
-      ],
+      ].filter(({ pid }) => !killed.includes(pid)),
       run: async (command) => {
         commands.push(command);
         return { exitCode: 0, stderr: "", stdout: "" };
@@ -589,7 +596,7 @@ describe("Cube sandbox provider", () => {
     await handle.process.deleteSession("legacy-session");
 
     expect(killed).toEqual([71]);
-    expect(commands.at(-1)).toBe("rm -rf /tmp/skynet-cube-sessions/6c65676163792d73657373696f6e");
+    expect(commands.at(-1)).toBe("rm -rf -- '/tmp/skynet-cube-sessions/6c65676163792d73657373696f6e'");
 
     create.mockRestore();
     getInfo.mockRestore();

@@ -1,6 +1,7 @@
 import type { SandboxProviderKind } from "@useagent/sandbox-contract";
 import { daytonaPlugin } from "@useagent/sandbox-daytona";
 import { sandboxProviderKind } from "../sandboxes/provider";
+import { sandboxPlugin } from "../sandboxes/plugins";
 import { operatorEnv } from "./runtime-env";
 import { runtimeGeneration } from "./runtime-environment";
 
@@ -14,6 +15,10 @@ export function runtimeRunSnapshot(
   env: Readonly<Record<string, string | undefined>> = process.env,
   kind: SandboxProviderKind = sandboxProviderKind(env),
 ): string {
+  const runtimeTemplate = sandboxPlugin(kind).runtimeTemplate;
+  if (runtimeTemplate) return runtimeTemplate(env, {
+    requiresDedicatedTemplate: runtimeGeneration(env) !== runtimeGeneration({}),
+  });
   if (kind === "cube") {
     const runtimeTemplate = operatorEnv(
       env,

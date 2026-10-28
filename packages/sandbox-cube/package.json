@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@useagent/sandbox-contract": "file:../sandbox-contract",
+    "@useagent/sandbox-e2b-transport": "file:../sandbox-e2b-transport",
     "e2b": "2.38.3"
   },
   "devDependencies": {

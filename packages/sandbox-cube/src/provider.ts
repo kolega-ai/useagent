@@ -3,23 +3,20 @@ import {
   ConnectionConfig,
   Sandbox as E2BSandbox,
   SandboxNotFoundError as E2BSandboxNotFoundError,
-  type CommandHandle,
   type SandboxInfo,
   type SandboxOpts,
 } from "e2b";
 import type {
   SandboxCreateOptions,
-  SandboxExecuteResult,
   SandboxFileSystem,
   SandboxHandle,
   SandboxInventory,
   SandboxPreviewLink,
   SandboxProcess,
   SandboxProvider,
-  SandboxPtyHandle,
-  SandboxSession,
 } from "@useagent/sandbox-contract";
 import { SandboxNotFoundError } from "@useagent/sandbox-contract";
+import { E2BSdkProcess, E2BSdkFileSystem } from "@useagent/sandbox-e2b-transport";
 
 export const CUBE_SANDBOX_DOMAIN = "cube.app";
 
@@ -49,45 +46,8 @@ interface CubeConnectionOptions {
 const DEFAULT_READINESS_ATTEMPTS = 20;
 const DEFAULT_READINESS_DELAY_MS = 250;
 
-interface CubeCommandFailure {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-function cubeCommandFailure(error: unknown): CubeCommandFailure | null {
-  if (!error || typeof error !== "object") return null;
-  const candidate = error as Partial<CubeCommandFailure>;
-  return typeof candidate.exitCode === "number" &&
-    typeof candidate.stdout === "string" &&
-    typeof candidate.stderr === "string"
-    ? {
-        exitCode: candidate.exitCode,
-        stdout: candidate.stdout,
-        stderr: candidate.stderr,
-      }
-    : null;
-}
-
-// The Cube runtime layout is root (`/root`, `/root/work`). envd picks its own
-// default user when a request names none, and that choice differed between two
-// templates built from images with identical OCI config (root on one, `user` on
-// the other), so every envd request says root explicitly.
+// The provider executes its runtime as root even if the template default differs.
 const CUBE_EXEC_USER = "root";
-
-async function runCubeCommand(
-  sandbox: E2BSandbox,
-  command: string,
-  options: { cwd?: string; envs?: Record<string, string>; timeoutMs?: number } = {},
-): Promise<CubeCommandFailure> {
-  try {
-    return await sandbox.commands.run(command, { ...options, user: CUBE_EXEC_USER });
-  } catch (error) {
-    const failure = cubeCommandFailure(error);
-    if (failure) return failure;
-    throw error;
-  }
-}
 
 function requireDnsHostname(value: string, envName: string): string {
   if (!/^[a-z0-9.-]+$/i.test(value)) {
@@ -284,195 +244,6 @@ function cubeState(state: SandboxInfo["state"]): string {
   return state === "running" ? "started" : state;
 }
 
-/** Retained sandboxes keep their live sessions under this directory; its name stays. */
-function sessionDirectory(sessionId: string): string {
-  return `/tmp/skynet-cube-sessions/${Buffer.from(sessionId).toString("hex")}`;
-}
-
-/** Session id a live process was stamped with. Reads the earlier env name
- *  too: processes started by the pre-rename release survive the cutover
- *  deploy, and matching only the new name would leak them past deleteSession
- *  and hide them from getSession. New processes are stamped USEAGENT_* only -
- *  drop the legacy read once the cutover release has cycled every resident
- *  and warm-pool sandbox. */
-function processSessionId(envs: Record<string, string | undefined>): string | undefined {
-  return envs.USEAGENT_SESSION_ID ?? envs.SKYNET_SESSION_ID;
-}
-
-class CubeProcess implements SandboxProcess {
-  constructor(private readonly sandbox: () => Promise<E2BSandbox>) {}
-
-  async executeCommand(
-    command: string,
-    cwd?: string,
-    env?: Record<string, string>,
-    timeoutSeconds?: number,
-  ): Promise<SandboxExecuteResult> {
-    const sandbox = await this.sandbox();
-    const result = await runCubeCommand(sandbox, command, {
-      ...(cwd ? { cwd } : {}),
-      ...(env ? { envs: env } : {}),
-      ...(timeoutSeconds ? { timeoutMs: timeoutSeconds * 1000 } : {}),
-    });
-    return {
-      exitCode: result.exitCode,
-      result: `${result.stdout}${result.stderr}`,
-    };
-  }
-
-  async createSession(sessionId: string): Promise<void> {
-    const sandbox = await this.sandbox();
-    await sandbox.commands.run(`mkdir -p ${sessionDirectory(sessionId)}`, { user: CUBE_EXEC_USER });
-  }
-
-  async deleteSession(sessionId: string): Promise<void> {
-    const sandbox = await this.sandbox();
-    const processes = await sandbox.commands.list();
-    await Promise.all(
-      processes
-        .filter((process) => processSessionId(process.envs) === sessionId)
-        .map((process) => sandbox.commands.kill(process.pid).catch(() => false)),
-    );
-    await sandbox.commands.run(`rm -rf ${sessionDirectory(sessionId)}`, { user: CUBE_EXEC_USER });
-  }
-
-  async getSession(sessionId: string): Promise<SandboxSession> {
-    const sandbox = await this.sandbox();
-    const processes = await sandbox.commands.list();
-    return {
-      commands: processes
-        .filter((process) => processSessionId(process.envs) === sessionId)
-        .map((process) => ({
-          id: process.envs.USEAGENT_COMMAND_ID ?? process.envs.SKYNET_COMMAND_ID ?? String(process.pid),
-        })),
-    };
-  }
-
-  async executeSessionCommand(
-    sessionId: string,
-    request: { command: string; runAsync?: boolean },
-    timeoutSeconds?: number,
-  ): Promise<{ cmdId: string; output?: string; stdout?: string; stderr?: string; exitCode?: number }> {
-    const sandbox = await this.sandbox();
-    await this.createSession(sessionId);
-    if (!request.runAsync) {
-      const result = await runCubeCommand(sandbox, request.command, {
-        ...(timeoutSeconds ? { timeoutMs: timeoutSeconds * 1000 } : {}),
-      });
-      return {
-        cmdId: crypto.randomUUID(),
-        output: `${result.stdout}${result.stderr}`,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
-    }
-
-    const commandId = crypto.randomUUID();
-    const directory = sessionDirectory(sessionId);
-    const script = `${directory}/${commandId}.sh`;
-    const log = `${directory}/${commandId}.log`;
-    await sandbox.files.write(script, request.command, { user: CUBE_EXEC_USER });
-    await sandbox.commands.run(`nohup setsid sh ${script} </dev/null >${log} 2>&1 &`, {
-      user: CUBE_EXEC_USER,
-      envs: {
-        USEAGENT_COMMAND_ID: commandId,
-        USEAGENT_SESSION_ID: sessionId,
-      },
-    });
-    return { cmdId: commandId, exitCode: 0 };
-  }
-
-  async getSessionCommandLogs(
-    sessionId: string,
-    commandId: string,
-  ): Promise<{ output: string; stdout: string; stderr: string }> {
-    const sandbox = await this.sandbox();
-    const log = `${sessionDirectory(sessionId)}/${commandId}.log`;
-    const output = await sandbox.files.read(log, { user: CUBE_EXEC_USER }).catch(() => "");
-    return { output, stdout: output, stderr: "" };
-  }
-
-  async createPty(options: {
-    cols: number;
-    rows: number;
-    cwd?: string;
-    envs?: Record<string, string>;
-    onData: (data: Uint8Array) => void | Promise<void>;
-  }): Promise<SandboxPtyHandle> {
-    const sandbox = await this.sandbox();
-    const handle = await sandbox.pty.create({
-      cols: options.cols,
-      rows: options.rows,
-      onData: options.onData,
-      user: CUBE_EXEC_USER,
-      // E2B defaults PTY streams to 60 seconds. Retained engine PTYs own their
-      // lifetime and still require the existing numeric termination evidence.
-      timeoutMs: 0,
-      ...(options.cwd ? { cwd: options.cwd } : {}),
-      ...(options.envs ? { envs: options.envs } : {}),
-    });
-    return cubePtyHandle(sandbox, handle);
-  }
-}
-
-function cubePtyHandle(sandbox: E2BSandbox, handle: CommandHandle): SandboxPtyHandle {
-  const encoder = new TextEncoder();
-  return {
-    waitForConnection: async () => {},
-    waitForTermination: async () => {
-      try {
-        const result = await handle.wait();
-        return {
-          exitCode: result.exitCode,
-          ...(result.error ? { error: "Cube PTY termination failed" } : {}),
-        };
-      } catch (error) {
-        const exitCode = handle.exitCode ?? (
-          error && typeof error === "object" && "exitCode" in error &&
-            typeof error.exitCode === "number"
-            ? error.exitCode
-            : undefined
-        );
-        return {
-          ...(exitCode === undefined ? {} : { exitCode }),
-          ...(exitCode === undefined || handle.error
-            ? { error: "Cube PTY termination failed" }
-            : {}),
-        };
-      }
-    },
-    sendInput: (data) =>
-      sandbox.pty.sendInput(
-        handle.pid,
-        typeof data === "string" ? encoder.encode(data) : data,
-      ),
-    resize: (cols, rows) => sandbox.pty.resize(handle.pid, { cols, rows }),
-    disconnect: () => handle.disconnect(),
-    kill: () => handle.kill(),
-  };
-}
-
-class CubeFileSystem implements SandboxFileSystem {
-  constructor(private readonly sandbox: () => Promise<E2BSandbox>) {}
-
-  async getFileDetails(path: string): Promise<{ size?: number }> {
-    const sandbox = await this.sandbox();
-    const info = await sandbox.files.getInfo(path, { user: CUBE_EXEC_USER });
-    return { size: info.size };
-  }
-
-  async downloadFile(path: string): Promise<Buffer> {
-    const sandbox = await this.sandbox();
-    return Buffer.from(await sandbox.files.read(path, { format: "bytes", user: CUBE_EXEC_USER }));
-  }
-
-  async uploadFile(file: Buffer, remotePath: string): Promise<void> {
-    const sandbox = await this.sandbox();
-    await sandbox.files.write(remotePath, new Blob([new Uint8Array(file)]), { user: CUBE_EXEC_USER });
-  }
-}
-
 /** Minutes a sandbox lives from creation or from its last keepAlive; the create option wins over the env default. */
 function cubeLifetimeMinutes(autoStopInterval?: number): number {
   return autoStopInterval && autoStopInterval > 0 ? autoStopInterval : positiveInteger(process.env.SANDBOX_AUTO_STOP_MIN, 30);
@@ -502,8 +273,8 @@ class CubeSandboxHandle implements SandboxHandle {
     this.state = cubeState(info.state);
     this.sandbox = sandbox;
     const connect = () => this.connected();
-    this.process = new CubeProcess(connect);
-    this.fs = new CubeFileSystem(connect);
+    this.process = new E2BSdkProcess(connect, { user: CUBE_EXEC_USER, sessionRoot: "/tmp/skynet-cube-sessions", legacySessionEnv: "SKYNET_SESSION_ID", legacyCommandEnv: "SKYNET_COMMAND_ID" });
+    this.fs = new E2BSdkFileSystem(connect, CUBE_EXEC_USER);
   }
 
   private async connected(): Promise<E2BSandbox> {

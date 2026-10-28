@@ -155,6 +155,7 @@ export interface EngineRunContext {
   repositorySnapshot?: string | null;
   repositoryCubeSnapshot?: string | null;
   repositoryBoxSnapshot?: string | null;
+  repositoryE2bTemplate?: string | null;
   repositoryLocalImage?: string | null;
   /** Typed, authorized resource scope persisted at run acceptance. */
   resolvedResources?: readonly RunResource[];

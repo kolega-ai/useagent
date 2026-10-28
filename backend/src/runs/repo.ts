@@ -262,7 +262,7 @@ export async function createRun(
       : null;
   // Replies inherit the root selection, including null on legacy threads.
   const [root] = input.id === input.threadId ? [] : await exec
-    .select({ repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryLocalImage: runs.repositoryLocalImage })
+    .select({ repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryE2bTemplate: runs.repositoryE2bTemplate, repositoryLocalImage: runs.repositoryLocalImage })
     .from(runs)
     .where(and(eq(runs.threadId, input.threadId), eq(runs.id, input.threadId),
       input.orgId === null ? isNull(runs.orgId) : eq(runs.orgId, input.orgId)))
@@ -290,6 +290,7 @@ export async function createRun(
     repositorySnapshot,
     repositoryCubeSnapshot: input.id === input.threadId ? project?.cubeSnapshot ?? null : root?.repositoryCubeSnapshot ?? null,
     repositoryBoxSnapshot: input.id === input.threadId ? project?.boxSnapshot ?? null : root?.repositoryBoxSnapshot ?? null,
+    repositoryE2bTemplate: input.id === input.threadId ? project?.e2bTemplate ?? null : root?.repositoryE2bTemplate ?? null,
     repositoryLocalImage: input.id === input.threadId ? project?.localImage ?? null : root?.repositoryLocalImage ?? null,
     parentRunId: input.parentRunId,
     threadId: input.threadId,

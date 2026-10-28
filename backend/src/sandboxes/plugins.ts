@@ -3,6 +3,7 @@ import { boxPlugin } from "@useagent/sandbox-box";
 import { cubePlugin } from "@useagent/sandbox-cube";
 import { daytonaPlugin } from "@useagent/sandbox-daytona";
 import { localPlugin } from "@useagent/sandbox-local";
+import { e2bPlugin } from "@useagent/sandbox-e2b";
 
 /**
  * Every sandbox vendor the control plane can run work on. Each entry is a
@@ -15,6 +16,7 @@ export const SANDBOX_PLUGINS: Readonly<Record<SandboxProviderKind, SandboxProvid
   cube: cubePlugin,
   box: boxPlugin,
   local: localPlugin,
+  e2b: e2bPlugin,
 };
 
 export const SANDBOX_PROVIDER_KINDS = Object.keys(SANDBOX_PLUGINS) as readonly SandboxProviderKind[];

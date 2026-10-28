@@ -11,7 +11,7 @@
 // Keep this file a pure leaf with zero imports or external runtime dependencies, so any
 // runtime can depend on the contract without pulling server code.
 
-export type SandboxProviderKind = "daytona" | "cube" | "box" | "local";
+export type SandboxProviderKind = "daytona" | "cube" | "box" | "local" | "e2b";
 
 /** A provider's top-level metadata lookup proved that the sandbox itself is absent. */
 export class SandboxNotFoundError extends Error {
@@ -455,6 +455,8 @@ export interface SandboxProviderPlugin<Config = unknown> {
    *  `templateEnv` names the operator variable for the lane being provisioned (the plugin's own
    *  `templateEnv` when omitted); a plugin with several lanes keeps its defaults per variable. */
   template(env: SandboxEnv, templateEnv?: string): string;
+  /** Provider-specific template for the native runtime lane, when distinct from the default. */
+  runtimeTemplate?(env: SandboxEnv, options?: { readonly requiresDedicatedTemplate: boolean }): string;
   createProvider(config: Config, ports?: SandboxProviderPorts): SandboxProvider;
   /** Validate a user-supplied key (and optional snapshot) without creating anything; throws SandboxCredentialError. */
   validateCredential?(input: SandboxCredentialInput, ports?: SandboxProviderPorts): Promise<void>;

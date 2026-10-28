@@ -211,7 +211,7 @@ export async function acquireThreadSandbox(
   const priorSnapshot = supportsRepositorySnapshots && ctx.orgId && ctx.threadId
     ? await dependencies.priorSandboxSnapshot?.(ctx.orgId, ctx.threadId, binding.kind) ?? null
     : null;
-  const images = { daytona: ctx.repositorySnapshot, cube: ctx.repositoryCubeSnapshot, box: ctx.repositoryBoxSnapshot, local: ctx.repositoryLocalImage };
+  const images = { daytona: ctx.repositorySnapshot, cube: ctx.repositoryCubeSnapshot, box: ctx.repositoryBoxSnapshot, e2b: ctx.repositoryE2bTemplate, local: ctx.repositoryLocalImage };
   const repositorySnapshot = supportsRepositorySnapshots ? images[binding.kind] ?? null : null;
   let effectiveSnapshot = supportsRepositorySnapshots
     ? retained ? priorSnapshot : priorSnapshot ?? repositorySnapshot ?? snapshotForBinding(binding, options.snapshot)

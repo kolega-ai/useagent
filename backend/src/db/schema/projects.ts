@@ -23,6 +23,7 @@ export const projects = pgTable(
     daytonaSnapshot: text("daytona_snapshot"),
     cubeSnapshot: text("cube_snapshot"),
     boxSnapshot: text("box_snapshot"),
+    e2bTemplate: text("e2b_template"),
     localImage: text("local_image"),
     archived: boolean("archived").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),

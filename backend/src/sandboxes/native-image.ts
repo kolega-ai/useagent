@@ -372,7 +372,11 @@ export function nativeImageSteps(
         "python3 -c 'import sys; assert sys.version_info >= (3, 11)'",
         `if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then ${sudo}apt-get update -qq && ${sudo}apt-get install -y -qq python3-venv; fi`,
         `python3 -m venv ${q(acpRoot)}`,
-        `${q(`${acpRoot}/bin/pip`)} install --disable-pip-version-check --no-cache-dir --only-binary=:all: --require-hashes -r ${q(acpLockPath)}`,
+        // The lock already enumerates the complete dependency graph. Older pip
+        // versions can resolve extras independently and select an unlocked
+        // version even in hash mode; install the locked entries themselves.
+        `${q(`${acpRoot}/bin/pip`)} install --disable-pip-version-check --no-cache-dir --no-deps --only-binary=:all: --require-hashes -r ${q(acpLockPath)}`,
+        `${q(`${acpRoot}/bin/pip`)} check`,
         `${q(`${acpRoot}/bin/kolega-code`)} --version | grep -Fxq 'kolega-code 0.47.1'`,
       ].join("\n"),
       timeoutSeconds: 900,

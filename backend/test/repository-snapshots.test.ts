@@ -16,19 +16,19 @@ describe("repository snapshots", () => {
     expect((await patch(outsider.cookies, { cube_snapshot: "other" })).status).toBe(404);
     expect((await patch(owner.cookies, { local_image: "registry.example/repo:latest" })).status).toBe(400);
     expect((await patch(owner.cookies, { local_image: `user:secret@host/repo@sha256:${"a".repeat(64)}` })).status).toBe(400);
-    const set = await patch(owner.cookies, { cube_snapshot: "cube-v1", box_snapshot: "box-v1", local_image: image });
+    const set = await patch(owner.cookies, { cube_snapshot: "cube-v1", box_snapshot: "box-v1", e2b_template: "e2b-v1", local_image: image });
     expect(set.status).toBe(200);
     const base = { prompt: "task", model: "mock", engine: "mock" as const, orgId: owner.orgId, userId: null, repos: [repo], memoryScope: "org" as const };
     const first = uid("root");
     await createRun({ ...base, id: first, threadId: first, parentRunId: null });
-    expect(await getRun(first)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryLocalImage: image });
-    expect((await patch(owner.cookies, { cube_snapshot: "cube-v2", box_snapshot: null, local_image: null })).status).toBe(200);
+    expect(await getRun(first)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryE2bTemplate: "e2b-v1", repositoryLocalImage: image });
+    expect((await patch(owner.cookies, { cube_snapshot: "cube-v2", box_snapshot: null, e2b_template: "e2b-v2", local_image: null })).status).toBe(200);
     const reply = uid("reply");
     await createRun({ ...base, id: reply, threadId: first, parentRunId: first });
-    expect(await getRun(reply)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryLocalImage: image });
+    expect(await getRun(reply)).toMatchObject({ repositoryCubeSnapshot: "cube-v1", repositoryBoxSnapshot: "box-v1", repositoryE2bTemplate: "e2b-v1", repositoryLocalImage: image });
     const second = uid("root");
     await createRun({ ...base, id: second, threadId: second, parentRunId: null });
-    expect(await getRun(second)).toMatchObject({ repositoryCubeSnapshot: "cube-v2", repositoryBoxSnapshot: null, repositoryLocalImage: null });
+    expect(await getRun(second)).toMatchObject({ repositoryCubeSnapshot: "cube-v2", repositoryBoxSnapshot: null, repositoryE2bTemplate: "e2b-v2", repositoryLocalImage: null });
   });
   test("the org can change or remove an image and new threads pin the value", async () => {
     const owner = await createOrgSession("snapshot-owner");
@@ -95,7 +95,7 @@ describe("repository snapshots", () => {
       const path = `/api/projects/${project.body.id}`;
       const denied = await json<Project>(path, { method: "PATCH", cookies: member.cookies, body: { daytona_snapshot: "unauthorized" } });
       expect(denied.status).toBe(404);
-      for (const body of [{ cube_snapshot: "unauthorized" }, { box_snapshot: "unauthorized" }, { local_image: `registry.example/repo@sha256:${"b".repeat(64)}` }]) {
+      for (const body of [{ cube_snapshot: "unauthorized" }, { box_snapshot: "unauthorized" }, { e2b_template: "unauthorized" }, { local_image: `registry.example/repo@sha256:${"b".repeat(64)}` }]) {
         expect((await json<Project>(path, { method: "PATCH", cookies: member.cookies, body })).status).toBe(404);
       }
       const allowed = await json<Project>(path, { method: "PATCH", cookies: owner.cookies, body: { daytona_snapshot: "approved-image" } });

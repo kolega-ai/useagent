@@ -108,6 +108,7 @@ export const runs = pgTable(
     repositorySnapshot: text("repository_snapshot"),
     repositoryCubeSnapshot: text("repository_cube_snapshot"),
     repositoryBoxSnapshot: text("repository_box_snapshot"),
+    repositoryE2bTemplate: text("repository_e2b_template"),
     repositoryLocalImage: text("repository_local_image"),
     // The actual template used for an allocation; null for older allocations.
     sandboxSnapshot: text("sandbox_snapshot"),

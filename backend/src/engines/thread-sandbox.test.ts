@@ -346,7 +346,7 @@ describe("repository image allocation", () => {
         return { id: `${sandboxPrefix}-${next}`, cpu: 2, memory: 8 } as SandboxHandle;
       },
     } as unknown as SandboxBinding["provider"];
-    const makeBinding = (kind: "daytona" | "box" | "cube" | "local"): SandboxBinding => ({
+    const makeBinding = (kind: "daytona" | "box" | "cube" | "local" | "e2b"): SandboxBinding => ({
       kind, provider, snapshot: kind === "box" ? "box-image" : null,
       credential: "user", userId: "owner", logins: [],
     });
@@ -376,10 +376,12 @@ describe("repository image allocation", () => {
     await run("seventh", "wrong-daytona", { repositoryCubeSnapshot: "repo-cube" });
     binding = makeBinding("local");
     await run("eighth", "wrong-daytona", { repositoryLocalImage: "repo-local" });
+    binding = makeBinding("e2b");
+    await run("ninth", "wrong-daytona", { repositoryE2bTemplate: "repo-e2b" });
     expect(first.sandbox.id).not.toBe(second.sandbox.id);
-    expect(requested).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image", "box-image", "repo-box", "repo-cube", "repo-local"]);
+    expect(requested).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image", "box-image", "repo-box", "repo-cube", "repo-local", "repo-e2b"]);
     expect(persisted.slice(0, 4).map((row) => (row as unknown[])[3])).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image"]);
-    for (const [index, id] of ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"].entries()) {
+    for (const [index, id] of ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth"].entries()) {
       forgetLiveThreadSandbox(id, `${sandboxPrefix}-${index + 1}`);
     }
   });

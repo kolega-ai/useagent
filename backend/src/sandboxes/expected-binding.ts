@@ -26,7 +26,7 @@ export class ExpectedSandboxMismatchError extends Error {
   }
 }
 
-const providers: readonly SandboxProviderKind[] = ["daytona", "cube", "box", "local"];
+const providers: readonly SandboxProviderKind[] = ["daytona", "cube", "box", "local", "e2b"];
 
 function identifier(value: unknown): string | null {
   if (typeof value !== "string") return null;

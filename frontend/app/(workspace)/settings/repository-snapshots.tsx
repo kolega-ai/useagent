@@ -11,6 +11,7 @@ const imageFields = [
   { key: "daytona_snapshot", label: "Daytona snapshot", placeholder: "Default snapshot" },
   { key: "cube_snapshot", label: "Cube template", placeholder: "Default template" },
   { key: "box_snapshot", label: "Box snapshot", placeholder: "Default snapshot" },
+  { key: "e2b_template", label: "E2B template", placeholder: "Default template" },
   { key: "local_image", label: "Local image", placeholder: "Image reference@sha256:digest" },
 ] as const;
 type ImageField = (typeof imageFields)[number]["key"];
