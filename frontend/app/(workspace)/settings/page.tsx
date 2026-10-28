@@ -10,6 +10,7 @@ import { ComputerConnectionsCard } from "./computer-connections-card";
 import { GeneralCard } from "./general-card";
 import { IntegrationConnections } from "./integration-connections";
 import { ProviderConnectionsCard } from "./provider-connections-card";
+import { RepositorySnapshots } from "./repository-snapshots";
 import { SandboxMinutesRow } from "./sandbox-minutes-row";
 import { SandboxProviderRow } from "./sandbox-provider-row";
 import { SecretsCard } from "./secrets-card";
@@ -159,6 +160,7 @@ export default function SettingsPage() {
                   <div className="flex flex-col gap-4">
                     <SandboxProviderRow />
                     <ComputerConnectionsCard />
+                    <RepositorySnapshots />
                   </div>
                 </Section>
               </OperatorOnly>

@@ -428,6 +428,8 @@ export interface SandboxProviderPlugin<Config = unknown> {
   readonly credentialRequired: boolean;
   /** Environment variable naming the snapshot/template new sandboxes start from, if the provider has one. */
   readonly templateEnv?: string;
+  /** This provider can use the repository image pinned on a thread. */
+  readonly supportsRepositorySnapshots?: boolean;
   /** Resources of the provider's base image (what a create without a template yields), when it has one. The
    *  control plane falls back to the base image only when this meets the run's resource target. */
   readonly baseImageResources?: { readonly cpu: number; readonly memory: number };

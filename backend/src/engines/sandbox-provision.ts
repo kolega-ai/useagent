@@ -12,6 +12,8 @@ export interface SandboxProvisionInput {
   /** The template to create from; "" means the provider's base image. */
   readonly snapshot: string;
   readonly chip: string;
+  /** An explicit repository image must never silently fall back to a base image. */
+  readonly requireSnapshot?: boolean;
   readonly create: Omit<SandboxCreateOptions, "snapshot">;
   readonly resourceTarget: SandboxResourceTarget;
   /** Test seam for the lost-workspace note (it reads the database). */
@@ -63,6 +65,7 @@ export async function provisionSandbox(input: SandboxProvisionInput): Promise<Pr
     }
   }
 
+  if (input.requireSnapshot) throw new Error(problem);
   const base = plugin.baseImageResources;
   if (!base || base.cpu < resourceTarget.cpu || base.memory < resourceTarget.memory) {
     throw new Error(problem);

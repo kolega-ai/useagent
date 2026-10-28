@@ -1,8 +1,12 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
 import { projects } from "../db/schema";
 
 export type ProjectRecord = typeof projects.$inferSelect;
+
+export class RepositorySnapshotConflictError extends Error {
+  constructor() { super("Remove the repository snapshot before changing the project repository"); }
+}
 
 export function normalizeProjectKey(value: string): string {
   return value.trim();
@@ -65,9 +69,10 @@ export async function ensureProject(
     const [updated] = await exec
       .update(projects)
       .set({ repoFullName, updatedAt: new Date() })
-      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId)))
+      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId), isNull(projects.daytonaSnapshot)))
       .returning();
-    return updated ?? row;
+    if (!updated) throw new RepositorySnapshotConflictError();
+    return updated;
   }
   return row;
 }
@@ -108,16 +113,25 @@ export async function updateProjectForOrg(
     displayName?: string;
     archived?: boolean;
     sortOrder?: number;
+    daytonaSnapshot?: string | null;
+    /** Repository identity observed before a snapshot write. */
+    expectedRepoFullName?: string | null;
   },
 ): Promise<ProjectRecord | null> {
   const set: Partial<typeof projects.$inferInsert> = { updatedAt: new Date() };
   if (patch.displayName !== undefined) set.displayName = patch.displayName;
   if (patch.archived !== undefined) set.archived = patch.archived;
   if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
+  if (patch.daytonaSnapshot !== undefined) set.daytonaSnapshot = patch.daytonaSnapshot;
   const [row] = await db
     .update(projects)
     .set(set)
-    .where(and(eq(projects.orgId, orgId), eq(projects.id, id)))
+    .where(and(
+      eq(projects.orgId, orgId), eq(projects.id, id),
+      patch.expectedRepoFullName !== undefined
+        ? patch.expectedRepoFullName === null ? isNull(projects.repoFullName) : eq(projects.repoFullName, patch.expectedRepoFullName)
+        : undefined,
+    ))
     .returning();
   return row ?? null;
 }

@@ -79,3 +79,66 @@ Better Auth signup process after the production backend is healthy, creates the
 user and personal organization through the application auth hooks, then deletes
 the transient credential file. Reusing the same email is idempotent. Omit both
 variables on later deploys. The long-running backend never enables public signup.
+
+## Repository-specific Daytona snapshots
+
+A repository-backed project can name a Daytona snapshot for new threads. The
+first selected repository determines the snapshot for a multi-repository
+thread. If it has no snapshot, UseAgent uses the existing runtime/personal
+snapshot selection. Cube, Box, and local execution keep their own templates.
+
+Create a **cold filesystem snapshot** in the Daytona organization selected by
+the UseAgent sandbox credential. Start with a clean, compatible UseAgent runtime
+image or a clean sandbox created from that image. Place a checkout with a clean
+`https://github.com/OWNER/REPO.git` origin at `/root/work/OWNER/REPO`, install
+that repository's dependencies there, and keep the intended default branch
+checked out. A different requested branch is refused when the baked checkout
+already exists; prepare a matching image or use a default snapshot for that
+case. The image must provide the same runtime and toolchain as your deployment's
+base image. Use at least the deployment's `SANDBOX_CPU` and
+`SANDBOX_MEMORY_GIB` requirements (defaults: 2 CPU and 8 GiB RAM).
+
+For example, adapt this Dockerfile for a public Bun repository, replacing the
+base image, repository and dependency command with your own:
+
+```Dockerfile
+FROM registry.example.com/your-useagent-runtime:version
+RUN mkdir -p /root/work/OWNER \
+    && git clone https://github.com/OWNER/REPO.git /root/work/OWNER/REPO \
+    && cd /root/work/OWNER/REPO \
+    && bun install --frozen-lockfile
+```
+
+Build the snapshot with Daytona's CLI:
+
+```sh
+daytona snapshot create repo-deps-v1 --dockerfile ./Dockerfile --cpu 2 --memory 8
+```
+
+Alternatively, stop the clean preparation sandbox and create a cold snapshot
+from it through Daytona's SDK; see [Daytona's snapshot documentation](https://www.daytona.io/docs/snapshots/).
+Do not snapshot a live UseAgent thread: session journals, credentials, runtime
+capabilities and other private files must not be shared with new threads. Do not
+put tokens or credentials into the snapshot or its Git remote.
+
+As an account listed in `OPERATOR_ACCOUNTS`, open **Settings > Infrastructure > Repository snapshots**, enter
+the snapshot name beside the repository, and save. Clear the field and save to
+remove it. The project API also accepts `daytona_snapshot` as a string or
+`null` in `PATCH /api/projects/:id`. Name syntax is checked when saved; availability
+is checked when the selected Daytona account provisions a sandbox. An absent,
+inaccessible or failed explicit snapshot fails the run with the snapshot name;
+it does not fall back to a different image.
+
+Start two independent threads with that repository and inspect each workspace.
+They are separate Daytona sandboxes created from the same image. Daytona may
+supply a provider-managed warm sandbox matched to the requested snapshot;
+UseAgent's own warm pool is Cube-only. The effective image is recorded for a
+thread's allocation. Existing retained sandboxes are not replaced when the
+setting changes. If the workspace is lost, replacement uses the recorded image;
+that does not restore lost files or agent session state.
+
+When dependencies change, build a **new named snapshot**, verify it, and update
+the repository setting. New threads pin the new name; existing threads retain
+their image choice and workspace. Keep older names available while they may be
+needed for replacement. Do not replace a snapshot in place if older threads
+need its original contents.

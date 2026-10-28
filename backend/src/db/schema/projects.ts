@@ -20,6 +20,7 @@ export const projects = pgTable(
     key: text("key").notNull(),
     displayName: text("display_name").notNull(),
     repoFullName: text("repo_full_name"),
+    daytonaSnapshot: text("daytona_snapshot"),
     archived: boolean("archived").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -331,3 +331,71 @@ describe("shared thread sandbox lease", () => {
     expect(source).toContain("RUN_TIMING_OUTCOMES.failure");
   });
 });
+
+describe("repository image allocation", () => {
+  test("fresh threads use their pinned Daytona image and separate allocations; other providers keep their own template", async () => {
+    const requested: string[] = [];
+    const persisted: unknown[] = [];
+    let next = 0;
+    const sandboxPrefix = crypto.randomUUID();
+    const provider = {
+      async ensureTemplate(name: string) { return { name, state: "active" as const }; },
+      async create(options: { snapshot?: string }) {
+        requested.push(options.snapshot ?? "");
+        next += 1;
+        return { id: `${sandboxPrefix}-${next}`, cpu: 2, memory: 8 } as SandboxHandle;
+      },
+    } as unknown as SandboxBinding["provider"];
+    const makeBinding = (kind: "daytona" | "box"): SandboxBinding => ({
+      kind, provider, snapshot: kind === "box" ? "box-image" : null,
+      credential: "user", userId: "owner", logins: [],
+    });
+    let binding = makeBinding("daytona");
+    const dependencies = {
+      retained: async () => null,
+      bindingForThread: async () => binding,
+      bindingForRun: async () => binding,
+      persist: async (...args: unknown[]) => { persisted.push(args); },
+      priorSandboxSnapshot: async () => null,
+      noteLostWorkspace: async () => false,
+    };
+    const run = async (id: string, snapshot: string | null) => acquireThreadSandbox({
+      runId: id, threadId: id, orgId: "org", repositorySnapshot: snapshot,
+      emit: async () => undefined,
+    } as unknown as EngineRunContext, { snapshot: "default-image", chip: "runtime", warmPool: false }, dependencies);
+    const first = await run("first", "repo-v1");
+    const second = await run("second", "repo-v1");
+    await run("third", "repo-v2");
+    // A personal Daytona connection without a repository image keeps its own image.
+    binding = { ...binding, snapshot: "personal-image" };
+    await run("fourth", null);
+    binding = makeBinding("box");
+    await run("fifth", "repo-v1");
+    expect(first.sandbox.id).not.toBe(second.sandbox.id);
+    expect(requested).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image", "box-image"]);
+    expect(persisted.slice(0, 4).map((row) => (row as unknown[])[3])).toEqual(["repo-v1", "repo-v1", "repo-v2", "personal-image"]);
+    for (const [index, id] of ["first", "second", "third", "fourth", "fifth"].entries()) {
+      forgetLiveThreadSandbox(id, `${sandboxPrefix}-${index + 1}`);
+    }
+  });
+
+  test("a replacement uses the previously allocated image rather than changed settings", async () => {
+    let used: string | undefined;
+    const binding: SandboxBinding = { kind: "daytona", provider: {} as SandboxBinding["provider"], snapshot: "new-default", credential: "user", userId: "owner", logins: [] };
+    await acquireThreadSandbox({ runId: "reply", threadId: "root", orgId: "org", repositorySnapshot: "repo-v2", emit: async () => undefined } as unknown as EngineRunContext,
+      { snapshot: "default", chip: "runtime" }, {
+        retained: async () => null,
+        bindingForThread: async () => binding,
+        bindingForRun: async () => binding,
+        persist: async () => {},
+        priorSandboxSnapshot: async () => "repo-v1",
+        provision: async (input) => {
+          used = input.snapshot;
+          expect(input.requireSnapshot).toBe(true);
+          return { sandbox: { id: "replacement", cpu: 2, memory: 8 } as SandboxHandle, fromTemplate: true };
+        },
+      });
+    expect(used).toBe("repo-v1");
+    forgetLiveThreadSandbox("root", "replacement");
+  });
+});
