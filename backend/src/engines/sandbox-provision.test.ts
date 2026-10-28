@@ -230,3 +230,13 @@ describe("provisionSandbox", () => {
     expect(seen).toEqual(["thread-a"]);
   });
 });
+
+test("an explicitly selected repository snapshot never falls back after a creation failure", async () => {
+  const provider = fakeProvider({ template: { name: "repo-v1", state: "active" }, createFails: "denied" });
+  await expect(provisionSandbox({
+    ctx: ctx(), binding: { kind: "daytona", provider }, snapshot: "repo-v1",
+    chip: "runtime", create: {}, resourceTarget: TARGET, noteLostWorkspace: quiet,
+    requireSnapshot: true,
+  })).rejects.toThrow("could not create a sandbox from snapshot repo-v1");
+  expect(provider.creates).toEqual([{ snapshot: "repo-v1" }]);
+});

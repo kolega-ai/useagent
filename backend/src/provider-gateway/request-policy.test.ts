@@ -13,6 +13,15 @@ const run: GatewayRun = {
 };
 
 describe("provider request body policy", () => {
+  test("DeepSeek responses stay bound to the selected model and refuse hosted tools", () => {
+    const selected = { ...run, engine: "kolega", model: "deepseek/deepseek-flash" } satisfies GatewayRun;
+    const body = { model: "deepseek-flash", input: [{ role: "user", content: "hi" }], tools: [{ type: "function", name: "shell" }], stream: true, store: false, max_output_tokens: 64 };
+    expect(applyProviderBodyPolicy(selected, JSON.stringify(body), "max_output_tokens", 100, "deepseek").ok).toBe(true);
+    expect(applyProviderBodyPolicy(selected, JSON.stringify({ ...body, model: "deepseek-v4-pro" }), "max_output_tokens", 100, "deepseek")).toEqual({ ok: false, error: "model_not_allowed" });
+    expect(applyProviderBodyPolicy(selected, JSON.stringify({ ...body, tools: [{ type: "web_search" }] }), "max_output_tokens", 100, "deepseek")).toEqual({ ok: false, error: "request_not_allowed" });
+    expect(applyProviderBodyPolicy(selected, JSON.stringify({ ...body, store: true }), "max_output_tokens", 100, "deepseek")).toEqual({ ok: false, error: "request_not_allowed" });
+    expect(applyProviderBodyPolicy(selected, JSON.stringify({ ...body, max_output_tokens: 101 }), "max_output_tokens", 100, "deepseek").ok).toBe(false);
+  });
   test("requires the durable run model for every paid engine", () => {
     expect(applyProviderBodyPolicy(run, '{"model":"gpt-other"}', "max_output_tokens", 100)).toEqual({
       ok: false,

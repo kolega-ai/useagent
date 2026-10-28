@@ -51,6 +51,7 @@ const UPSTREAM_ORIGINS: Record<ProviderId, string> = {
   openrouter: "https://openrouter.ai/api",
   cerebras: "https://api.cerebras.ai",
   opencode: "https://opencode.ai/zen",
+  deepseek: "https://api.deepseek.com",
 };
 
 export function providerUpstreamOrigin(
@@ -119,7 +120,7 @@ function requestHeaders(provider: ProviderId, incoming: Headers, credential: str
 
 function normalizeOpenAIModelForUpstream(run: GatewayRun, body: string): string {
   if (
-    (run.engine !== "opencode" && run.engine !== "pi") ||
+    (run.engine !== "opencode" && run.engine !== "pi" && run.engine !== "kolega") ||
     !run.model.startsWith("openai/") ||
     !body
   ) return body;
@@ -317,13 +318,23 @@ export function createProviderGatewayRoutes(deps: ProviderRouteDeps = {}): Hono 
       requestedOutputTokens = policy.requestedOutputTokens;
     }
     if (target.provider === "openrouter") {
-      upstreamBody = applyOpenRouterProviderRouting(run.model, upstreamBody);
+      const model = run.engine === "kolega" && run.model.startsWith("openrouter/")
+        ? run.model.slice("openrouter/".length) : run.model;
+      if (upstreamBody) {
+        const body = JSON.parse(upstreamBody) as Record<string, unknown>;
+        if (run.engine === "kolega" && body.model === run.model) body.model = model;
+        upstreamBody = applyOpenRouterProviderRouting(model, JSON.stringify(body));
+      }
     } else if (target.provider === "openai") {
       upstreamBody = normalizeOpenAIModelForUpstream(run, upstreamBody);
     } else if (target.provider === "cerebras") {
       upstreamBody = normalizeCerebrasModelForUpstream(run, upstreamBody);
     } else if (target.provider === "opencode") {
       upstreamBody = normalizeZenModelForUpstream(run, upstreamBody);
+    } else if (target.provider === "deepseek" && run.engine === "kolega" && upstreamBody) {
+      const body = JSON.parse(upstreamBody) as Record<string, unknown>;
+      if (body.model === run.model) body.model = run.model.slice("deepseek/".length);
+      upstreamBody = JSON.stringify(body);
     }
 
     const resolved = await resolveCredential({
@@ -452,6 +463,10 @@ export function createProviderGatewayRoutes(deps: ProviderRouteDeps = {}): Hono 
   routes.post(
     "/anthropic/v1/messages/count_tokens",
     proxy({ provider: "anthropic", upstreamPath: "/v1/messages/count_tokens", outputLimitField: null }),
+  );
+  routes.post(
+    "/deepseek/v1/responses",
+    proxy({ provider: "deepseek", upstreamPath: "/beta/responses", outputLimitField: "max_output_tokens" }),
   );
   routes.post(
     "/openai/v1/responses",

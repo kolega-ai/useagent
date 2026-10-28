@@ -48,6 +48,7 @@ describe("provider connection presentation", () => {
         chatGptOAuth: null,
       },
       { provider: "cerebras", apiKey: null, chatGptOAuth: null },
+      { provider: "deepseek", apiKey: null, chatGptOAuth: null },
     ]);
   });
 

@@ -49,6 +49,7 @@ export interface NativeImageInputs {
   readonly runtimeDependencyPackage: Buffer;
   readonly piPackage: Buffer;
   readonly piLock: Buffer;
+  readonly acpLock: Buffer;
   /** ANTHROPIC_BASE_URL and CLAUDE_CONFIG_DIR for the Claude driver's wrapper; empty skips Claude. */
   readonly claudeEnvironment: Readonly<Record<string, string>>;
 }
@@ -305,6 +306,9 @@ export function nativeImageSteps(
   const runtimeArchive = `${runtimeStage}/runtime.part-0`;
   const piRoot = layout.runsAsRoot ? PI_RUNTIME_ROOT : `${home}/.useagent/pi-runtime`;
   const piManifest = `${piRoot}/manifest`;
+  const acpRoot = layout.runsAsRoot ? "/opt/useagent/acp-agent" : `${home}/.useagent/acp-agent`;
+  const acpLockPath = `${home}/.useagent/acp-runtime/requirements.txt`;
+  const sudo = layout.runsAsRoot ? "" : "sudo -n ";
   const steps: NativeImageStep[] = [
     {
       name: "bun",
@@ -359,6 +363,19 @@ export function nativeImageSteps(
         executable: `${piRoot}/current/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js`,
       }),
       timeoutSeconds: 600,
+    },
+    {
+      name: "acp-agent",
+      files: [{ path: acpLockPath, bytes: inputs.acpLock }],
+      command: [
+        `if test -x ${q(`${acpRoot}/bin/kolega-code`)} && ${q(`${acpRoot}/bin/kolega-code`)} --version | grep -Fxq 'kolega-code 0.47.1'; then exit 0; fi`,
+        "python3 -c 'import sys; assert sys.version_info >= (3, 11)'",
+        `if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then ${sudo}apt-get update -qq && ${sudo}apt-get install -y -qq python3-venv; fi`,
+        `python3 -m venv ${q(acpRoot)}`,
+        `${q(`${acpRoot}/bin/pip`)} install --disable-pip-version-check --no-cache-dir --only-binary=:all: --require-hashes -r ${q(acpLockPath)}`,
+        `${q(`${acpRoot}/bin/kolega-code`)} --version | grep -Fxq 'kolega-code 0.47.1'`,
+      ].join("\n"),
+      timeoutSeconds: 900,
     },
     {
       name: "documents",
@@ -506,13 +523,14 @@ export async function loadNativeImageInputs(
   const arch = linuxArch(process.arch);
   if (!arch) throw new Error(`unsupported backend architecture ${process.arch}`);
   const asset = (path: string) => readFile(new URL(`../../${path}`, import.meta.url));
-  const [bun, runtimeArchive, runtimeDependencyLock, runtimeDependencyPackage, piPackage, piLock] = await Promise.all([
+  const [bun, runtimeArchive, runtimeDependencyLock, runtimeDependencyPackage, piPackage, piLock, acpLock] = await Promise.all([
     readFile(process.execPath),
     asset(`runtime-assets/${NATIVE_RUNTIME_ARTIFACT.archiveName}`),
     asset("runtime-assets/dependencies/bun.lock"),
     asset("runtime-assets/dependencies/package.json"),
     asset("pi-runtime/package.json"),
     asset("pi-runtime/package-lock.json"),
+    asset("acp-runtime/requirements.txt"),
   ]);
   if (sha256(runtimeArchive) !== NATIVE_RUNTIME_ARTIFACT.archiveSha256) {
     throw new Error("the packaged native runtime failed its archive checksum");
@@ -530,6 +548,7 @@ export async function loadNativeImageInputs(
     runtimeDependencyPackage,
     piPackage,
     piLock,
+    acpLock,
     claudeEnvironment,
   };
 }

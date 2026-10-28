@@ -8,6 +8,9 @@ import type { AppEnv } from "../http";
 import { strictOrgSecretRedactor } from "../secrets/store";
 import { getRunForOrg } from "./repo";
 import { getThreadExpectedSandbox } from "../sandboxes/binding";
+import { resolveExpectedSandbox } from "../sandboxes/binding";
+import { acpApprovals } from "../engines/acp-approvals";
+import { getAcpSession, sameAcpBinding } from "../engines/acp-provider-driver";
 
 /** Register control traffic for a provider session already running inside a
  * turn. These replies unblock the resident session; they never enqueue a run. */
@@ -71,7 +74,7 @@ export function registerProviderSessionRoutes(routes: Hono<AppEnv>): void {
     if (
       run.status !== "running" ||
       !binding ||
-      boundDriver?.descriptor.protocol.name !== "t3-orchestration"
+      !["t3-orchestration", "acp"].includes(boundDriver?.descriptor.protocol.name ?? "")
     ) {
       return c.json({ error: "approval_session_not_active" }, 409);
     }
@@ -82,6 +85,24 @@ export function registerProviderSessionRoutes(routes: Hono<AppEnv>): void {
       return c.json({ error: "invalid JSON body" }, 400);
     }
     try {
+      if (boundDriver?.descriptor.protocol.name === "acp") {
+        const expected = run.expectedSandbox ?? await getThreadExpectedSandbox(c.get("orgId"), run.threadId);
+        const bridge = getAcpSession(binding.nativeSessionId);
+        if (!bridge || binding.runtime.kind !== "sandbox" || bridge.sandboxId !== binding.runtime.id) {
+          return c.json({ error: "approval_session_not_active" }, 409);
+        }
+        if (expected) {
+          const sandbox = await resolveExpectedSandbox(expected, run.threadId);
+          if (sandbox.id !== bridge.sandboxId || !sameAcpBinding(bridge.expectedSandbox, expected)) {
+            return c.json({ error: "approval_session_not_active" }, 409);
+          }
+        }
+        const result = await acpApprovals.reply({
+          runId: run.id, threadId: run.threadId, sessionId: binding.nativeSessionId,
+          requestId: c.req.param("requestId"), decision: body.decision, permissionMode: run.permissionMode,
+        });
+        return c.json({ ok: true, already_answered: result.alreadyAnswered });
+      }
       const result = await replyToRuntimeApproval({
         runId: run.id,
         threadId: run.threadId,

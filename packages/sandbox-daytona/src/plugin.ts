@@ -57,6 +57,7 @@ export const daytonaPlugin: SandboxProviderPlugin<DaytonaApiConfig> = {
   credentialEnv: "DAYTONA_API_KEY",
   credentialRequired: true,
   templateEnv: "DAYTONA_SNAPSHOT",
+  supportsRepositorySnapshots: true,
   // Daytona's default image is 1 vCPU / 1 GiB: far below the product target, so
   // a snapshot failure never silently lands there unless the operator lowered
   // SANDBOX_CPU / SANDBOX_MEMORY_GIB to fit it.

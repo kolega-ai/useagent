@@ -49,6 +49,8 @@ import {
   resolveSandboxBindingForSandbox,
 } from "../sandboxes/binding";
 import { piBridgeManager } from "../engines/pi-rpc-bridge";
+import { cleanupOwnedAcpTransports } from "../engines/pi-rpc-transport";
+import { sandboxRuntimeLayout } from "../sandboxes/provider";
 import {
   parseExpectedSandboxBinding,
   type ExpectedSandboxBinding,
@@ -114,15 +116,20 @@ export type RestartTransportCleanup = (input: {
 }) => Promise<void>;
 
 const defaultRestartTransportCleanup: RestartTransportCleanup = async (input) => {
-  if (input.engine !== "pi") return;
-  if (!input.sandboxId) throw new Error("Pi restart cleanup has no sandbox identity");
+  if (input.engine !== "pi" && input.engine !== "kolega") return;
+  if (!input.sandboxId) throw new Error("Native restart cleanup has no sandbox identity");
   if (input.expectedSandbox && input.sandboxId !== input.expectedSandbox.sandboxId) {
     throw new ExpectedSandboxMismatchError();
   }
+  const binding = input.expectedSandbox ? null : await resolveSandboxBindingForSandbox(input.sandboxId);
   const sandbox = input.expectedSandbox
     ? await resolveExpectedSandbox(input.expectedSandbox, input.threadId)
-    : await (await resolveSandboxBindingForSandbox(input.sandboxId)).provider.get(input.sandboxId);
-  await piBridgeManager.prepare(sandbox, input.expectedSandbox ?? undefined);
+    : await binding!.provider.get(input.sandboxId);
+  if (input.engine === "pi") await piBridgeManager.prepare(sandbox, input.expectedSandbox ?? undefined);
+  else {
+    const kind = input.expectedSandbox?.provider ?? binding!.kind;
+    await cleanupOwnedAcpTransports(sandbox, { spoolDirectory: `${sandboxRuntimeLayout(kind).home}/.useagent/acp-rpc-output` });
+  }
 };
 
 function recoveryMetadata(
@@ -232,7 +239,7 @@ async function resolveDispatched(
     if (cmd.expectedSandbox && cmd.threadId !== cmd.runThreadId) {
       throw new ExpectedSandboxMismatchError();
     }
-    if (cmd.engine === "pi") {
+    if (cmd.engine === "pi" || cmd.engine === "kolega") {
       await cleanup({
         engine: cmd.engine,
         sandboxId: cmd.sandboxId,
@@ -513,7 +520,7 @@ export async function runDueReconciles(
       entry.sessionId === run.engineSessionId &&
       (!expectedSandbox || entry.sandboxId === expectedSandbox.sandboxId);
     if (expectedSandbox && !queueIdentityAgrees) throw new ExpectedSandboxMismatchError();
-    if (run.engine === "pi" && queueIdentityAgrees) {
+    if ((run.engine === "pi" || run.engine === "kolega") && queueIdentityAgrees) {
       await cleanup({
         engine: run.engine,
         sandboxId: run.sandboxId,

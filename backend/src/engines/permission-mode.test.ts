@@ -49,6 +49,14 @@ describe("permission modes", () => {
     }
   });
 
+  test("Kolega requires Plan or explicit approval for native operations", () => {
+    expect(permissionModeSupported("kolega", "read-only")).toBe(true);
+    expect(permissionModeSupported("kolega", "approval-required")).toBe(true);
+    expect(permissionModeSupported("kolega", "auto-accept-edits")).toBe(false);
+    expect(permissionModeSupported("kolega", "full-access")).toBe(false);
+    expect(permissionModeSupported("pi", "full-access")).toBe(true);
+  });
+
   test("validates the wire enum and keeps the operator posture as the default", () => {
     expect(isPermissionMode("read-only")).toBe(true);
     expect(isPermissionMode("yolo")).toBe(false);

@@ -314,12 +314,18 @@ export class LocalProvider implements SandboxProvider {
 
   async create(options: SandboxCreateOptions = {}): Promise<SandboxHandle> {
     if (!this.config.runnerId) throw new Error("no runner selected for this run");
-    if (!this.config.image) throw new Error("SANDBOX_IMAGE_REF and SANDBOX_IMAGE_DIGEST name no image for local sandboxes");
+    let image = this.config.image;
+    if (options.snapshot) {
+      const match = /^([a-zA-Z0-9][a-zA-Z0-9._:/-]*)@(sha256:[a-f0-9]{64})$/.exec(options.snapshot);
+      if (!match || options.snapshot.length > 512) throw new Error("Local image must be a reference pinned by sha256 digest");
+      image = { ref: match[1]!, digest: match[2]! };
+    }
+    if (!image) throw new Error("SANDBOX_IMAGE_REF and SANDBOX_IMAGE_DIGEST name no image for local sandboxes");
     const link = this.onlineLink(this.config.runnerId);
     // The name this machine pulled under (the plane's, when the plane served the
     // image) is the name it can find locally; the digest is the deployment's.
     const params: LocalSandboxCreateParams = {
-      image: link.image?.digest === this.config.image.digest ? { ref: link.image.ref, digest: link.image.digest } : this.config.image,
+      image: link.image?.digest === image.digest ? { ref: link.image.ref, digest: link.image.digest } : image,
       env: options.envVars ?? {},
       labels: options.labels ?? {},
       cpu: this.config.cpu,

@@ -1,7 +1,7 @@
 import type { EngineId } from "../db/schema";
 import { runtimeDevModeEnabled } from "../security/runtime-secrets";
 
-export const PROVIDER_IDS = ["anthropic", "openai", "openrouter", "cerebras", "opencode"] as const;
+export const PROVIDER_IDS = ["anthropic", "openai", "openrouter", "cerebras", "opencode", "deepseek"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
@@ -10,6 +10,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   openrouter: "OpenRouter",
   cerebras: "Cerebras",
   opencode: "OpenCode Zen",
+  deepseek: "DeepSeek",
 };
 
 /** OpenCode Zen's own model id for one of our "opencode/<id>:free" lane ids:
@@ -21,6 +22,11 @@ export function openCodeZenModelId(model: string): string {
 
 export function providerForEngine(engine: EngineId, model: string): ProviderId | null {
   switch (engine) {
+    case "kolega":
+      if (model.startsWith("deepseek/")) return "deepseek";
+      if (model.startsWith("openai/")) return "openai";
+      if (model.startsWith("anthropic/")) return "anthropic";
+      return model.startsWith("openrouter/") ? "openrouter" : null;
     case "opencode":
     case "daytona":
     case "pi":
@@ -52,6 +58,8 @@ export function providerCredentialName(provider: ProviderId): string {
       return "CEREBRAS_API_KEY";
     case "opencode":
       return "OPENCODE_API_KEY";
+    case "deepseek":
+      return "DEEPSEEK_API_KEY";
   }
 }
 

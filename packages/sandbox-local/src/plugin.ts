@@ -34,6 +34,7 @@ export function localProviderConfig(env: SandboxEnv, overrides: Partial<LocalPro
 /** A developer's machine, reached through its runner's link, as a sandbox provider. */
 export const localPlugin: SandboxProviderPlugin<LocalProviderConfig> = {
   kind: "local",
+  supportsRepositorySnapshots: true,
   label: "This machine",
   // No vendor credential: a runner authenticates its own link with a token the plane issued.
   credentialEnv: "LOCAL_RUNNERS",

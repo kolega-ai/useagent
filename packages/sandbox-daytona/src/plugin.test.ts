@@ -11,6 +11,7 @@ describe("Daytona plugin", () => {
     expect(() => daytonaPlugin.template({}, "DAYTONA_OTHER_SNAPSHOT")).toThrow(/no default snapshot for DAYTONA_OTHER_SNAPSHOT/);
     // The default image is far below the product target, so a fallback there is refused unless the target says so.
     expect(daytonaPlugin.baseImageResources).toEqual({ cpu: 1, memory: 1 });
+    expect(daytonaPlugin.supportsRepositorySnapshots).toBe(true);
   });
 
   test("configFromEnv defaults the API URL and target", () => {

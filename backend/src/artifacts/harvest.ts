@@ -19,7 +19,7 @@ const DELIVERABLE_EXTENSIONS = [
 ] as const;
 const PRUNED_DIRECTORIES = [
   "node_modules", ".git", ".cache", ".venv", "venv", "__pycache__", "dist", "build", ".next",
-  ".claude", ".codex", ".opencode", ".pi", ".config", "coverage",
+  ".claude", ".codex", ".opencode", ".pi", ".kolega", ".config", "coverage",
   // The plane's state directory, and the inputs directory older releases used in retained sandboxes.
   ".useagent", SANDBOX_STATE_DIR, `${SANDBOX_STATE_DIR}-inputs`, ".useagent-inputs", "target",
 ] as const;

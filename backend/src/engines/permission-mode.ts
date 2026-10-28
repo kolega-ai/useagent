@@ -49,8 +49,11 @@ export function runtimeModeFor(mode: PermissionMode): RuntimeMode {
  *  pi-provider-driver.ts), so a mode below full access cannot be honoured
  *  there. Every other engine either runs on the resident runtime, which asks
  *  before acting, or never touches a sandbox. */
-export function permissionModeSupported(engine: string): boolean {
-  return canonicalEngine(engine) !== "pi";
+export function permissionModeSupported(engine: string, mode?: PermissionMode): boolean {
+  const canonical = canonicalEngine(engine);
+  if (canonical === "pi") return mode === "full-access";
+  if (canonical === "kolega") return mode === undefined || mode === "read-only" || mode === "approval-required";
+  return true;
 }
 
 /** Thrown at the single run insert point when a run would be stored with a

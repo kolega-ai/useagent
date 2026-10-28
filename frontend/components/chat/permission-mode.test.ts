@@ -40,6 +40,14 @@ describe("permission mode model", () => {
     expect(permissionModeFor("codex", "read-only")).toBe("read-only");
   });
 
+  test("Kolega offers Plan and Guard, never silently enables bypass", () => {
+    expect(permissionModeOffered("kolega", "read-only")).toBe(true);
+    expect(permissionModeOffered("kolega", "approval-required")).toBe(true);
+    expect(permissionModeOffered("kolega", "full-access")).toBe(false);
+    expect(permissionModeOffered("kolega", "auto-accept-edits")).toBe(false);
+    expect(permissionModeFor("kolega", "full-access")).toBe("approval-required");
+  });
+
   test("the edits switch says what it really lets through on each engine", () => {
     expect(autoApplyEditsHint("codex")).toBe("File edits, and commands that stay inside the workspace, go through without asking.");
     expect(autoApplyEditsHint("opencode")).toBe("File edits go through without asking; commands still ask.");

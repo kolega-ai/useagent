@@ -104,6 +104,13 @@ export const runs = pgTable(
     // the sandbox resolve the same provider. Null for runs before this record.
     sandboxProvider: text("sandbox_provider").$type<SandboxProviderKind>(),
     sandboxCredential: text("sandbox_credential").$type<"env" | "user">(),
+    // Pinned at thread creation, inherited from the root even after settings change.
+    repositorySnapshot: text("repository_snapshot"),
+    repositoryCubeSnapshot: text("repository_cube_snapshot"),
+    repositoryBoxSnapshot: text("repository_box_snapshot"),
+    repositoryLocalImage: text("repository_local_image"),
+    // The actual template used for an allocation; null for older allocations.
+    sandboxSnapshot: text("sandbox_snapshot"),
     expectedSandbox: jsonb("expected_sandbox").$type<ExpectedSandboxBinding>(),
     // The GitHub repository this run works in ("owner/name"), chosen in the New
     // Task composer and validated against GET /api/repos. Nullable — a run with

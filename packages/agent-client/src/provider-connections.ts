@@ -5,6 +5,7 @@ export const MODEL_PROVIDER_CONNECTION_PROVIDERS = [
   "anthropic",
   "openrouter",
   "cerebras",
+  "deepseek",
 ] as const;
 /** Computer providers: where an org's sandboxes run when it brings its own key. */
 export const COMPUTER_PROVIDER_CONNECTION_PROVIDERS = ["daytona", "box"] as const;

@@ -92,6 +92,7 @@ export const ENGINES: { id: EngineId; label: string }[] = [
   { id: "claude", label: "Claude Code" },
   { id: "codex", label: "Codex" },
   { id: "pi", label: "Pi" },
+  { id: "kolega", label: "Kolega Code" },
 ];
 
 export function engineLabel(id: EngineId): string {
@@ -385,7 +386,7 @@ export interface StepTrace {
 
 /** Chips that tag a sandbox lifecycle/boot row: the engine id, the shared
  *  `boot` phase row, and the chat engine's context-preparation row. */
-const ENGINE_CHIPS = new Set<string>(["boot", "opencode", "claude", "codex", "pi", "chat"]);
+const ENGINE_CHIPS = new Set<string>(["boot", "opencode", "claude", "codex", "pi", "kolega", "chat"]);
 
 /** Tool name (lower-cased) → its display verb + glyph family. */
 const TOOL_VERB: Record<string, { verb: string; glyph: TraceGlyph }> = {

@@ -15,6 +15,7 @@ const inputs: NativeImageInputs = {
   runtimeDependencyPackage: Buffer.from("{}"),
   piPackage: Buffer.from("{}"),
   piLock: Buffer.from("{}"),
+  acpLock: Buffer.from("fixture lock"),
   claudeEnvironment: { ANTHROPIC_BASE_URL: "https://gateway.example/anthropic", CLAUDE_CONFIG_DIR: "/home/user/.useagent/claude" },
 };
 const NAME = nativeImageName(inputs);

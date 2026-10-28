@@ -25,7 +25,7 @@ export type EngineModelCatalogStatuses = Partial<Record<EngineId, CapabilityMode
 export interface EngineReadinessStatus {
   readonly ready: boolean;
   readonly reason: "enabled" | "disabled" | "provider_unhealthy" | "gateway_unconfigured" | "not_proven";
-  readonly provider?: "anthropic" | "openai" | "openrouter" | "cerebras" | "opencode";
+  readonly provider?: "anthropic" | "openai" | "openrouter" | "cerebras" | "opencode" | "deepseek";
   readonly providerHealth?: string;
   readonly message?: string;
 }
@@ -87,6 +87,7 @@ const ENGINE_RUNTIME_CAPTIONS: Partial<Record<EngineId, string>> = {
   claude: "Anthropic agent · cloud",
   codex: "OpenAI agent · cloud",
   pi: "native Pi harness · cloud",
+  kolega: "Kolega Code · cloud",
   chat: "Chat only: answers from context, no computer or tools",
 };
 

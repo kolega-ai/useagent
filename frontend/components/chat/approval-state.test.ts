@@ -38,10 +38,11 @@ describe("native approval state", () => {
     ).toBeNull();
   });
 
-  test("ignores malformed or non-T3 approval frames", () => {
+  test("accepts native ACP approvals and ignores malformed or unrelated frames", () => {
     const malformed = frame(2, "approval.requested", { id: "approval-2" });
     expect(selectPendingApproval([malformed])).toBeNull();
     expect(selectPendingApproval([{ ...requested, provider: "opencode" }])).toBeNull();
+    expect(selectPendingApproval([{ ...requested, provider: "kolega" }])).toMatchObject({ id: "approval-1" });
   });
 
   test("renders provider-generic approval requests as other", () => {

@@ -123,6 +123,15 @@ describe("sandbox secret delivery mode", () => {
     expect(sandboxSecretSourceCommand(injection.mode)).toBe(":");
   });
 
+  test("DeepSeek provider credentials cannot be materialized into the sandbox", () => {
+    const injection = buildInjection({ secrets: [{ name: "DEEPSEEK_API_KEY", kind: "env", value: "provider-secret-value" }], names: ["DEEPSEEK_API_KEY"], skipped: [] }, {
+      excludeNames: PROVIDER_SECRET_NAMES, mode: "compatibility",
+    });
+    expect(injection.names).toEqual([]);
+    expect(injection.files).toEqual([]);
+    expect(injection.createEnv).toEqual({});
+  });
+
   test("compatibility mode preserves dotenv, file, marker names, and materialization", async () => {
     const injection = buildInjection(decrypted, {
       excludeNames: PROVIDER_SECRET_NAMES,

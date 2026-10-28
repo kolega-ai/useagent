@@ -1,6 +1,7 @@
 import { SandboxNotFoundError } from "@useagent/sandbox-contract";
-import { getThreadSandbox, setRunSandbox } from "../runs/repo";
+import { getThreadSandboxSnapshot, getThreadSandbox, setRunSandbox } from "../runs/repo";
 import { sandboxProviderKind, type SandboxHandle } from "../sandboxes/provider";
+import { sandboxPlugin } from "../sandboxes/plugins";
 import { runtimeRunSnapshot } from "./runtime-snapshot";
 import { claimCubeWarmSandbox } from "../sandboxes/cube-warm-pool";
 import {
@@ -168,11 +169,20 @@ export async function resolveRetainedSandbox(
 export async function acquireThreadSandbox(
   ctx: EngineRunContext,
   options: ThreadSandboxOptions,
-  dependencies = {
+  dependencies: {
+    retained: typeof resolveRetainedSandbox;
+    bindingForThread: typeof resolveSandboxBindingForThread;
+    bindingForRun: typeof resolveSandboxBindingForRun;
+    persist: typeof setRunSandbox;
+    priorSandboxSnapshot?: typeof getThreadSandboxSnapshot;
+    provision?: typeof provisionSandbox;
+    noteLostWorkspace?: typeof noteLostWorkspace;
+  } = {
     retained: resolveRetainedSandbox,
     bindingForThread: resolveSandboxBindingForThread,
     bindingForRun: resolveSandboxBindingForRun,
     persist: setRunSandbox,
+    priorSandboxSnapshot: getThreadSandboxSnapshot,
   },
 ): Promise<ThreadSandboxLease> {
   const resourceTarget = resolveSandboxResourceTarget();
@@ -195,10 +205,21 @@ export async function acquireThreadSandbox(
     : await dependencies.bindingForRun(ctx));
   let sandbox: SandboxHandle | null = retained?.sandbox ?? null;
   let reused = sandbox !== null;
+  // The selected provider consumes only its own repository image. A prior
+  // allocation pins the effective image when a lost sandbox is replaced.
+  const supportsRepositorySnapshots = sandboxPlugin(binding.kind).supportsRepositorySnapshots === true;
+  const priorSnapshot = supportsRepositorySnapshots && ctx.orgId && ctx.threadId
+    ? await dependencies.priorSandboxSnapshot?.(ctx.orgId, ctx.threadId, binding.kind) ?? null
+    : null;
+  const images = { daytona: ctx.repositorySnapshot, cube: ctx.repositoryCubeSnapshot, box: ctx.repositoryBoxSnapshot, local: ctx.repositoryLocalImage };
+  const repositorySnapshot = supportsRepositorySnapshots ? images[binding.kind] ?? null : null;
+  let effectiveSnapshot = supportsRepositorySnapshots
+    ? retained ? priorSnapshot : priorSnapshot ?? repositorySnapshot ?? snapshotForBinding(binding, options.snapshot)
+    : null;
 
   if (!sandbox) {
     await ctx.emit({ kind: "task", label: "Provisioning cloud sandbox…", chip: options.chip });
-    if (binding.kind === "cube" && binding.credential === "env" && options.warmPool !== false) {
+    if (binding.kind === "cube" && binding.credential === "env" && options.warmPool !== false && repositorySnapshot === null && priorSnapshot === null) {
       const endWarmPool = ctx.timing?.begin(RUN_TIMING_STAGES.sandboxWarmPool);
       try {
         sandbox = await claimCubeWarmSandbox(options.warmPool || undefined);
@@ -213,10 +234,12 @@ export async function acquireThreadSandbox(
     if (!sandbox) {
       const endCreate = ctx.timing?.begin(RUN_TIMING_STAGES.sandboxCreate);
       try {
-        sandbox = (await provisionSandbox({
+        const provisioned = await (dependencies.provision ?? provisionSandbox)({
           ctx,
           binding,
-          snapshot: snapshotForBinding(binding, options.snapshot),
+          noteLostWorkspace: dependencies.noteLostWorkspace,
+          snapshot: effectiveSnapshot ?? snapshotForBinding(binding, options.snapshot),
+          requireSnapshot: repositorySnapshot !== null || priorSnapshot !== null,
           chip: options.chip,
           create: {
             labels: {
@@ -227,7 +250,9 @@ export async function acquireThreadSandbox(
             autoDeleteInterval: Number(process.env.SANDBOX_AUTO_DELETE_MIN ?? 4320),
           },
           resourceTarget,
-        })).sandbox;
+        });
+        sandbox = provisioned.sandbox;
+        if (supportsRepositorySnapshots && !provisioned.fromTemplate) effectiveSnapshot = "";
         endCreate?.(RUN_TIMING_OUTCOMES.success);
       } catch (error) {
         endCreate?.(RUN_TIMING_OUTCOMES.failure);
@@ -247,7 +272,7 @@ export async function acquireThreadSandbox(
     runId: ctx.runId,
     sandboxId: sandbox.id,
     reused,
-    persist: (runId, sandboxId) => dependencies.persist(runId, sandboxId, bindingRecord(binding)),
+    persist: (runId, sandboxId) => dependencies.persist(runId, sandboxId, bindingRecord(binding), effectiveSnapshot),
     deleteFreshSandbox: () => sandbox.delete(),
   });
   if (ctx.threadId) rememberLiveThreadSandbox(ctx.threadId, sandbox);

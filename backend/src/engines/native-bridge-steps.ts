@@ -59,8 +59,10 @@ export function createNativeBridgeStepProjector(
       chain = chain.then(async () => {
         const { id, code } = await pending;
         if (!id) return;
+        const completedInput = body.input === undefined ? null : inputRecord(redact.unknown(body.input));
         await ctx.updateStep?.(id, {
           ...code,
+          ...(completedInput ? { input: { ...inputRecord(code.input), ...completedInput } } : {}),
           output: redact.text(body.error ?? body.preview ?? "").slice(0, OUTPUT_CAP),
           error: body.status === "error",
         });

@@ -82,6 +82,10 @@ function openRouterRequestAllowed(body: Record<string, unknown>): boolean {
 
 function requestModelMatchesRun(run: GatewayRun, requested: unknown): boolean {
   if (requested === run.model) return true;
+  if (run.engine === "kolega" && typeof requested === "string") {
+    const separator = run.model.indexOf("/");
+    return separator > 0 && requested === run.model.slice(separator + 1);
+  }
   return (run.engine === "opencode" || run.engine === "pi") &&
     ((run.model.startsWith("openai/") && requested === run.model.slice("openai/".length)) ||
       (run.engine === "opencode" &&
@@ -90,6 +94,21 @@ function requestModelMatchesRun(run: GatewayRun, requested: unknown): boolean {
       (run.engine === "opencode" &&
         run.model.startsWith("opencode/") &&
         requested === openCodeZenModelId(run.model)));
+}
+
+// Responses can invoke hosted tools as well as client functions. Only the
+// client functions that the sandbox executes are permitted on this route.
+const DEEPSEEK_FIELDS = new Set([
+  "model", "input", "instructions", "tools", "tool_choice", "parallel_tool_calls",
+  "store", "stream", "prompt_cache_key", "reasoning", "max_output_tokens", "include",
+]);
+function deepseekRequestAllowed(body: Record<string, unknown>): boolean {
+  if (Object.keys(body).some((field) => !DEEPSEEK_FIELDS.has(field))) return false;
+  if (body.store !== undefined && body.store !== false) return false;
+  if (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.some((tool) =>
+    !tool || typeof tool !== "object" || (tool as { type?: unknown }).type !== "function"
+  ))) return false;
+  return true;
 }
 
 /**
@@ -125,6 +144,9 @@ export function applyProviderBodyPolicy(
     return { ok: false, error: "model_not_allowed" };
   }
   if (provider === "openrouter" && !openRouterRequestAllowed(body)) {
+    return { ok: false, error: "request_not_allowed" };
+  }
+  if (provider === "deepseek" && !deepseekRequestAllowed(body)) {
     return { ok: false, error: "request_not_allowed" };
   }
 

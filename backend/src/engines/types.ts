@@ -151,6 +151,11 @@ export interface EngineRunContext {
    *  adapter can ensure each clone exists in the workspace before the turn —
    *  idempotently (per repo dir), so a resumed thread keeps its existing clones. */
   repos?: string[];
+  /** Daytona snapshot pinned when the root turn was accepted. */
+  repositorySnapshot?: string | null;
+  repositoryCubeSnapshot?: string | null;
+  repositoryBoxSnapshot?: string | null;
+  repositoryLocalImage?: string | null;
   /** Typed, authorized resource scope persisted at run acceptance. */
   resolvedResources?: readonly RunResource[];
   /** The engine's native session id recorded by this thread's PREVIOUS turn on

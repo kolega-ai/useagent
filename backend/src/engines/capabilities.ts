@@ -27,6 +27,7 @@ export function sessionCapabilities(engine: string, res: CapabilityResources): N
   const isOpencode = e === "opencode";
   const isCodex = e === "codex";
   const isPi = e === "pi";
+  const isAcp = e === "kolega";
   const isRuntime = res.runtimeOrchestration === true;
   return {
     // Streaming, tool progress, commands and the sandbox terminal are real for
@@ -36,7 +37,7 @@ export function sessionCapabilities(engine: string, res: CapabilityResources): N
     streamingText: true,
     toolProgress: true,
     fileDiffs: isOpencode || isRuntime,
-    commands: true,
+    commands: !isAcp,
     directTerminal: true, // the thread sandbox has a terminal for every engine
     // Engine-NATIVE task-subagent projection only exists on the OpenCode protocol and the
     // canonical runtime adapter.
@@ -44,21 +45,21 @@ export function sessionCapabilities(engine: string, res: CapabilityResources): N
     // The gateway child_session_* tools spawn DEFERRED serial thread turns through the product
     // command lane - engine-independent, so ACP claude/codex sessions get them too.
     gatewayChildSessions: res.knowledgeTools,
-    reasoning: isOpencode || isPi || isRuntime,
+    reasoning: isOpencode || isPi || isRuntime || isAcp,
     resume: true, // opencode continuation / ACP session/load
     load: true,
     stop: true, // opencode POST /abort · ACP session/cancel (both wired)
     // Honest per-engine differences:
-    plans: isOpencode || isPi || isRuntime,
+    plans: isOpencode || isPi || isRuntime || isAcp,
     usage: isOpencode || isPi || isRuntime,
-    modelSelection: isOpencode || e === "claude" || isCodex || isPi,
+    modelSelection: isOpencode || e === "claude" || isCodex || isPi || isAcp,
 
     // Pi can resume a persisted JSONL session on the next turn, but it cannot
     // yet reconstruct an in-flight reconciliation stream after backend restart.
     reconcile: isOpencode || isRuntime,
     close: !isOpencode && !isRuntime,
     nativeEmbed: isOpencode && !isRuntime,
-    approvals: isRuntime,
+    approvals: isRuntime || isAcp,
     questions: isOpencode || isRuntime,
     // Runtime resources (caller-provided truth):
     desktop: res.desktop,

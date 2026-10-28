@@ -74,6 +74,7 @@ const ENGINE_LABELS: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   pi: "Pi",
+  kolega: "Kolega Code",
   chat: "Chat",
   mock: "Mock",
 };

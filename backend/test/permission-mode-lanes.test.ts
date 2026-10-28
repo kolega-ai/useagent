@@ -14,12 +14,17 @@ import { createRun, getRun, getRunForOrg } from "../src/runs/repo";
 
 const rolloutEnv = new Map<string, string | undefined>();
 beforeAll(() => {
-  for (const key of ["THREAD_RELATIONSHIPS_WRITE", "THREAD_RELATIONSHIPS_READ", "PRODUCT_CHILD_THREADS", "PRODUCT_CHILD_CANARY_ORG_IDS"]) {
+  for (const key of ["THREAD_RELATIONSHIPS_WRITE", "THREAD_RELATIONSHIPS_READ", "PRODUCT_CHILD_THREADS", "PRODUCT_CHILD_CANARY_ORG_IDS", "ENABLED_ENGINES", "PROVIDER_HEALTH_DEEPSEEK", "ENGINE_READINESS_KOLEGA", "GATEWAY_PUBLIC_URL", "PROVIDER_GATEWAY_SECRET"]) {
     rolloutEnv.set(key, process.env[key]);
   }
   process.env.THREAD_RELATIONSHIPS_WRITE = "on";
   process.env.THREAD_RELATIONSHIPS_READ = "read";
   process.env.PRODUCT_CHILD_THREADS = "on";
+  process.env.ENABLED_ENGINES = `${process.env.ENABLED_ENGINES ?? ""},kolega`;
+  process.env.PROVIDER_HEALTH_DEEPSEEK = "ready";
+  process.env.ENGINE_READINESS_KOLEGA = "ready";
+  process.env.GATEWAY_PUBLIC_URL = "https://gateway.example.com";
+  process.env.PROVIDER_GATEWAY_SECRET = "test-only-provider-gateway-secret-long-enough";
 });
 
 afterAll(() => {
@@ -41,6 +46,18 @@ async function rootRun(cookies: string, permissionMode: string) {
 }
 
 describe("permission mode across the lanes that continue a turn", () => {
+  test("Kolega defaults to asking and refuses bypass on the shared command lane", async () => {
+    const owner = await createOrgSession("acp-permission-owner");
+    const actor = await getRunForOrg(owner.orgId, await rootRun(owner.cookies, "approval-required"));
+    if (!actor) throw new Error("owner run missing");
+    const id = crypto.randomUUID();
+    const run = { id, threadId: id, prompt: "test", model: "deepseek/deepseek-flash", engine: "kolega" as const, repos: [], memoryScope: "org" as const };
+    const accepted = await acceptRunCommand({ orgId: owner.orgId, actorId: actor.userId, idempotencyKey: uid("acp"), run });
+    expect(accepted.status).toBe("created");
+    expect((await getRun(id))?.permissionMode).toBe("approval-required");
+    const other = crypto.randomUUID();
+    await expect(acceptRunCommand({ orgId: owner.orgId, actorId: actor.userId, idempotencyKey: uid("acp-bypass"), run: { ...run, id: other, threadId: other, permissionMode: "full-access" } })).rejects.toMatchObject({ code: "permission_mode_unsupported" });
+  });
   test("a child of a read-only turn keeps read only, and cannot be spawned on an engine that ignores it", async () => {
     const owner = await createOrgSession("perm-child-owner");
     const parent = await getRunForOrg(owner.orgId, await rootRun(owner.cookies, "read-only"));

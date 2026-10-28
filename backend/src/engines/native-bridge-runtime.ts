@@ -51,8 +51,9 @@ export function safePiBridgeProviderEvent(
   ctx: Pick<EngineRunContext, "runId" | "threadId">,
   frame: Parameters<typeof piBridgeProviderEvent>[1],
   redact: Pick<SecretRedactor, "unknown">,
+  provider = "pi",
 ): ProviderEventInput {
-  const event = piBridgeProviderEvent(ctx, frame);
+  const event = piBridgeProviderEvent(ctx, frame, provider);
   return { ...event, payload: redact.unknown(event.payload) };
 }
 
@@ -93,7 +94,7 @@ export async function runNativeBridgeTurn(
       for (const durableBody of durableDeltas.durable(body)) {
         const frame = sequence.frame(durableBody);
         await persistEvent(
-          safePiBridgeProviderEvent(ctx, frame, options.redact),
+          safePiBridgeProviderEvent(ctx, frame, options.redact, driver.provider),
           {
             critical: body.kind === "commands.updated" || required || Boolean(body.ownerChildId),
             required: required || Boolean(body.ownerChildId),
@@ -223,7 +224,7 @@ export async function runNativeBridgeTurn(
         signal: ctx.signal,
       });
       if (result.status !== "ok") {
-        throw new Error(`Pi steer failed (${result.status}): ${result.message ?? "unsupported"}`);
+        throw new Error(`Native steer failed (${result.status}): ${result.message ?? "unsupported"}`);
       }
       // Delivery evidence, separate from session authority: the bridge accepted
       // this prompt and the history it carried.
@@ -240,7 +241,7 @@ export async function runNativeBridgeTurn(
     if (operationError && persistenceError) {
       throw new AggregateError(
         [operationError, persistenceError],
-        "Pi turn and durable provider-event drain both failed",
+        "Native turn and durable provider-event drain both failed",
       );
     }
     if (persistenceError) throw persistenceError;

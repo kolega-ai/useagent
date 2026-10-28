@@ -122,6 +122,16 @@ export function offlineModelsForEngine(engine: EngineId): ModelOption[] {
 
 export function selectableModelsForEngine(engine: EngineId): ModelOption[] {
   const normalized = normalizeEngine(engine);
+  if (normalized === "kolega") return [
+    { value: "deepseek/deepseek-flash", label: "DeepSeek V4.1 Flash" },
+    { value: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+    { value: "openai/gpt-5.6-sol", label: "GPT-5.6 Sol" },
+    { value: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna" },
+    { value: "anthropic/claude-opus-5", label: "Claude Opus 5" },
+    { value: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" },
+    { value: "openrouter/moonshotai/kimi-k3", label: "Kimi K3 via OpenRouter" },
+    { value: "openrouter/google/gemini-3.7-flash", label: "Gemini 3.7 Flash via OpenRouter" },
+  ];
   // The Free lane is OpenCode-only backend policy; pi keeps the paid catalog.
   if (normalized === "opencode") return OPENCODE_SELECTABLE_MODELS;
   if (normalized === "pi") return MODELS;

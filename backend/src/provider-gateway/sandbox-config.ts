@@ -177,7 +177,7 @@ const toolThreadTokens = new ThreadTokenMemo();
 
 function mintResidentThreadToken(
   ctx: EngineRunContext,
-  engine: "claude" | "opencode" | "pi",
+  engine: "claude" | "opencode" | "pi" | "kolega",
   provider: ProviderId,
 ): string | null {
   const config = providerGatewayConfig();
@@ -284,6 +284,17 @@ export function piProviderGatewayCapability(
 ): PiProviderGatewayCapability | null {
   const baseUrl = providerGatewayEndpoint(provider, provider !== "anthropic");
   const bearerToken = mintResidentThreadToken(ctx, "pi", provider);
+  return baseUrl && bearerToken ? { provider, baseUrl, bearerToken } : null;
+}
+
+/** Run-bound model access for the additional native protocol driver. */
+export function nativeProviderGatewayCapability(
+  ctx: EngineRunContext,
+  engine: "kolega",
+  provider: ProviderId,
+): PiProviderGatewayCapability | null {
+  const baseUrl = providerGatewayEndpoint(provider, provider !== "anthropic");
+  const bearerToken = mintResidentThreadToken(ctx, engine, provider);
   return baseUrl && bearerToken ? { provider, baseUrl, bearerToken } : null;
 }
 

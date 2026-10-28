@@ -66,6 +66,26 @@ function app(options: {
 }
 
 describe("provider gateway routes", () => {
+  test("DeepSeek keeps the upstream key in the gateway and enforces the live session's model", async () => {
+    const token = { ...claims, engine: "kolega" as const, provider: "deepseek" as const };
+    const activeRun = { ...run, engine: "kolega" as const, model: "deepseek/deepseek-flash" };
+    const seen: Array<{ url: string; authorization: string | null; model: unknown }> = [];
+    const gateway = app({ token, activeRun, fetchUpstream: async (url, init) => {
+      seen.push({ url: String(url), authorization: new Headers(init?.headers).get("authorization"), model: JSON.parse(String(init?.body)).model });
+      return Response.json({ ok: true });
+    } });
+    const response = await gateway.request("/api/provider/deepseek/v1/responses", {
+      method: "POST", headers: { authorization: "Bearer capability-only" },
+      body: JSON.stringify({ model: "deepseek-flash", input: "hello", max_output_tokens: 20 }),
+    });
+    expect(response.status).toBe(200);
+    expect(seen).toEqual([{ url: "https://api.deepseek.com/beta/responses", authorization: "Bearer real-upstream-key", model: "deepseek-flash" }]);
+    const denied = await gateway.request("/api/provider/deepseek/v1/responses", {
+      method: "POST", headers: { authorization: "Bearer capability-only" },
+      body: JSON.stringify({ model: "deepseek-v4-pro", input: "hello" }),
+    });
+    expect(denied.status).toBe(403);
+  });
   test("upstream overrides reject insecure or unallowlisted production origins", () => {
     expect(() =>
       providerUpstreamOrigin("openai", {
