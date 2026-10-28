@@ -105,7 +105,7 @@ function capturedSpoolRemovalCommand(paths: readonly string[]): string {
   return `rm -f -- ${paths.map(shellQuote).join(" ")}`;
 }
 
-/** Delete only useAgent-owned Pi writers from a retained Daytona sandbox.
+/** Delete only owned protocol writers from a retained sandbox.
  * Missing inventory or deletion authority is an unsafe unknown, so fail closed. */
 async function cleanupOwnedNativeTransports(
   sandbox: SandboxHandle,
@@ -114,12 +114,12 @@ async function cleanupOwnedNativeTransports(
 ): Promise<void> {
   const process = sandbox.process;
   if (typeof process.sendSessionCommandInput !== "function") return;
+  const label = protocol === "pi" ? "Pi" : "ACP";
   if (
     typeof process.listSessions !== "function" ||
-    typeof process.listPtySessions !== "function" ||
-    typeof process.killPtySession !== "function"
+    (protocol === "pi" && (typeof process.listPtySessions !== "function" || typeof process.killPtySession !== "function"))
   ) {
-    throw new Error("Pi process-session cleanup capability is unavailable");
+    throw new Error(`${label} process-session cleanup capability is unavailable`);
   }
   const deadline = Date.now() + (options.timeoutMs ?? PI_CLEANUP_TIMEOUT_MS);
   const withinDeadline = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -139,7 +139,7 @@ async function cleanupOwnedNativeTransports(
   };
   const [sessions, ptys] = await withinDeadline(() => Promise.all([
     process.listSessions!(),
-    process.listPtySessions!(),
+    protocol === "pi" ? process.listPtySessions!() : Promise.resolve([]),
   ]));
   const processPrefix = protocol === "pi" ? piProcessSessionPrefix(sandbox.id) : acpProcessSessionPrefix(sandbox.id);
   const ownedSessions = sessions.filter(({ sessionId }) => sessionId.startsWith(processPrefix));
