@@ -114,6 +114,13 @@ export interface GitHubPullRequestLocator {
   readonly revision: string | null;
 }
 
+/** A GitLab.com project, with its full group and subgroup path. */
+export interface GitLabRepositoryLocator {
+  readonly type: "gitlab.repository";
+  readonly repository: string;
+  readonly revision: string | null;
+}
+
 export interface FileLocator {
   readonly type: "file";
   readonly id: string;
@@ -148,6 +155,12 @@ export interface GitHubPullRequestResource extends RunResourceBase {
   readonly locator: GitHubPullRequestLocator;
 }
 
+export interface GitLabRepositoryResource extends RunResourceBase {
+  readonly kind: "code.repository";
+  readonly provider: "gitlab";
+  readonly locator: GitLabRepositoryLocator;
+}
+
 export interface FileResource extends RunResourceBase {
   readonly kind: "file";
   readonly locator: FileLocator;
@@ -168,6 +181,7 @@ export interface WebPageResource extends RunResourceBase {
 export type RunResource =
   | GitHubRepositoryResource
   | GitHubPullRequestResource
+  | GitLabRepositoryResource
   | ThreadResource
   | FileResource
   | WebPageResource;
@@ -177,6 +191,7 @@ export type RunResource =
 export type RunResourceSelection =
   | Omit<GitHubRepositoryResource, "capabilities" | "provenance">
   | Omit<GitHubPullRequestResource, "capabilities" | "provenance">
+  | Omit<GitLabRepositoryResource, "capabilities" | "provenance">
   | Omit<ThreadResource, "capabilities" | "provenance">
   | Omit<FileResource, "capabilities" | "provenance">
   | Omit<WebPageResource, "capabilities" | "provenance">;
@@ -487,8 +502,8 @@ function isRunResource(value: unknown): value is RunResource {
   const locator = record.locator as Record<string, unknown>;
   if (record.kind === "code.repository") {
     return (
-      record.provider === "github" &&
-      locator.type === "github.repository" &&
+      ((record.provider === "github" && locator.type === "github.repository") ||
+        (record.provider === "gitlab" && locator.type === "gitlab.repository")) &&
       typeof locator.repository === "string" &&
       isNullableString(locator.revision)
     );

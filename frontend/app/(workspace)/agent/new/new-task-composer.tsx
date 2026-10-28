@@ -288,7 +288,7 @@ export function NewTaskComposer({
           private: r.private,
           default_branch: r.default_branch ?? "main",
         }));
-        setRepos(offeredRepos);
+        setRepos((current) => [...new Map([...current, ...offeredRepos].map((repo) => [repo.full_name, repo])).values()]);
         if (
           initialRepository &&
           offeredRepos.some((repo) => repo.full_name === initialRepository)
@@ -679,6 +679,7 @@ export function NewTaskComposer({
             repos={repos}
             value={selectedRepos}
             onChange={setSelectedRepos}
+            onDiscover={(repo) => setRepos((current) => current.some((item) => item.full_name === repo.full_name) ? current : [...current, repo])}
             emptyLabel="Choose project"
             triggerClassName="rounded-full px-2 py-1 text-body-2-medium text-text-secondary"
           />

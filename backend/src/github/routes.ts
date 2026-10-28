@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import { githubOrgAccessErrorForOrg, listBranches, listRepos, listRepoTree } from "./repos";
+import { gitLabToken } from "../gitlab/connection";
+import { gitLabProjects } from "../gitlab/client";
 
 // GET /api/repos — the real repository list powering the New Task composer's
 // repo picker. Org-scoped (auth required, like the other domain routes); the
@@ -13,10 +15,17 @@ reposRoutes.use("*", orgScope);
 reposRoutes.get("/", async (c) => {
   const orgId = c.get("orgId");
   const accessError = await githubOrgAccessErrorForOrg(orgId);
-  if (accessError) {
-    return c.json({ configured: true, repos: [], error: accessError }, 403);
+  const token = await gitLabToken(orgId);
+  let gitlab: Awaited<ReturnType<typeof gitLabProjects>> = [];
+  let gitlabError: string | undefined;
+  if (token) {
+    try { gitlab = await gitLabProjects(token); }
+    catch { gitlabError = "GitLab repositories are unavailable. Check the connection and retry."; }
   }
-  return c.json(await listRepos(orgId));
+  if (accessError && !token) return c.json({ configured: true, repos: [], error: accessError }, 403);
+  const github = accessError ? { configured: true, repos: [], error: accessError } : await listRepos(orgId);
+  return c.json({ configured: github.configured || Boolean(token), repos: [...github.repos, ...gitlab],
+    ...(github.error || gitlabError ? { error: [github.error, gitlabError].filter(Boolean).join(" ") } : {}) });
 });
 
 // GET /api/repos/:owner/:name/branches — real branches for the composer's

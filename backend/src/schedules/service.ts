@@ -8,7 +8,7 @@ import {
   removeFromContextIndex,
   syncAutomationToContextIndex,
 } from "../context/projector";
-import { unknownRepos } from "../github/repos";
+import { createRunResourceAuthorization } from "../resources/authorization";
 import {
   engineModelReadyForDispatch,
   engineResolutionErrorBody,
@@ -25,7 +25,7 @@ import {
   type SkillPinReference,
 } from "../skills/pins";
 import { resolveSkillSelection } from "../skills/repo";
-import { RunIntakeError } from "../resources/run-intake";
+import { explicitRepositoryResources, resolveRunIntake, RunIntakeError } from "../resources/run-intake";
 import { RunAdmissionClosedError } from "../commands";
 import { SpendAllowanceExceededError } from "../runs/spend";
 import { SandboxMinutesExceededError } from "../runs/sandbox-minutes";
@@ -150,11 +150,12 @@ async function parseRepos(
   const repos = stringArrayField(body, "repos");
   if (repos === undefined) return undefined;
   if (repos.length > 0) {
-    const unknown = await unknownRepos(repos, orgId);
-    if (unknown.length > 0) {
-      throw new ScheduleServiceError(400, {
-        error: `repos not in the available set: ${unknown.join(", ")}`,
-      });
+    try {
+      await resolveRunIntake({ source: "automation", text: "", explicitResources: explicitRepositoryResources(repos) },
+        { authorize: createRunResourceAuthorization(orgId) });
+    } catch (error) {
+      if (error instanceof RunIntakeError) throw new ScheduleServiceError(400, { error: error.message });
+      throw error;
     }
   }
   return repos;

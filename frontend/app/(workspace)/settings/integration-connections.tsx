@@ -148,7 +148,7 @@ function IntegrationRow({
   );
 }
 
-export function IntegrationConnections({ query = "" }: { query?: string }) {
+export function IntegrationConnections({ query = "", excludeProviders = [] }: { query?: string; excludeProviders?: readonly string[] }) {
   const {
     actionError,
     busyProvider,
@@ -162,7 +162,7 @@ export function IntegrationConnections({ query = "" }: { query?: string }) {
   } = useIntegrations();
   // One row per provider: the backend can list the same provider connected AND
   // available at once (the duplicate GitHub row bug); connected wins.
-  const deduped = useMemo(() => dedupeIntegrations(integrations), [integrations]);
+  const deduped = useMemo(() => dedupeIntegrations(integrations).filter((integration) => !excludeProviders.includes(integration.provider)), [integrations, excludeProviders]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return deduped;

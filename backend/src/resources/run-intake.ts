@@ -1,5 +1,6 @@
 import { formatRepoRef, parseRepoRef } from "../github/repo-ref";
 import { hasGitHubRepositoryCheckoutIntent } from "./public-github";
+import { GITLAB_REPOSITORY_PREFIX, gitlabResourceResolver, normalizeGitLabRepository } from "./gitlab-resolver";
 import {
   githubResourceResolver,
   isSafeGitRevision,
@@ -54,6 +55,14 @@ export function decodeRunResourceSelections(value: unknown): ExplicitRunResource
         locator: { type: "github.repository", repository: loc.repository, revision: loc.revision },
       });
     } else if (
+      record.kind === "code.repository" && record.provider === "gitlab" &&
+      loc.type === "gitlab.repository" && typeof loc.repository === "string" &&
+      (loc.revision === null || typeof loc.revision === "string")
+    ) {
+      selections.push({ kind: "code.repository", provider: "gitlab", locator: {
+        type: "gitlab.repository", repository: loc.repository, revision: loc.revision,
+      } });
+    } else if (
       record.kind === "code.change" &&
       record.provider === "github" &&
       loc.type === "github.pull_request" &&
@@ -91,6 +100,7 @@ export function decodeRunResourceSelections(value: unknown): ExplicitRunResource
 
 export const defaultResourceResolverRegistry = new ResourceResolverRegistry([
   githubResourceResolver,
+  gitlabResourceResolver,
 ]);
 
 export interface RunIntakeDependencies {
@@ -104,6 +114,8 @@ function resourceKey(resource: ResourceDescriptor | RunResource): string {
       return `github:repository:${resource.locator.repository.toLowerCase()}`;
     case "github.pull_request":
       return `github:pull:${resource.locator.repository.toLowerCase()}:${resource.locator.number}`;
+    case "gitlab.repository":
+      return `gitlab:repository:${resource.locator.repository.toLowerCase()}`;
     case "thread":
       return `useagent:thread:${resource.locator.id}`;
     case "file":
@@ -125,6 +137,15 @@ function invalidExplicit(resource: ExplicitRunResource, message: string): never 
 
 function explicitDescriptor(resource: ExplicitRunResource): ResourceDescriptor {
   switch (resource.locator.type) {
+    case "gitlab.repository": {
+      const repository = normalizeGitLabRepository(resource.locator.repository);
+      if (resource.kind !== "code.repository" || resource.provider !== "gitlab" ||
+          !repository || !isSafeGitRevision(resource.locator.revision)) {
+        invalidExplicit(resource, "Invalid explicit GitLab repository resource.");
+      }
+      resource = { ...resource, locator: { ...resource.locator, repository } };
+      break;
+    }
     case "github.repository": {
       const repository = normalizeGitHubRepository(resource.locator.repository);
       if (
@@ -202,6 +223,7 @@ function explicitDescriptor(resource: ExplicitRunResource): ResourceDescriptor {
   const capabilities = (() => {
     switch (resource.locator.type) {
       case "github.repository":
+      case "gitlab.repository":
         return ["content.read", "code.checkout"] as const;
       case "github.pull_request":
         return ["change.read", "change.checks.read", "deployment.read"] as const;
@@ -264,7 +286,8 @@ function applyAuthorizationDecision(
   if (!available) {
     const reference =
       resource.locator.type === "github.repository" ||
-      resource.locator.type === "github.pull_request"
+      resource.locator.type === "github.pull_request" ||
+      resource.locator.type === "gitlab.repository"
         ? resource.locator.repository
         : resource.locator.type === "web.page"
           ? resource.locator.url
@@ -286,7 +309,8 @@ function applyAuthorizationDecision(
   if (
     revision !== undefined &&
     (resource.locator.type === "github.repository" ||
-      resource.locator.type === "github.pull_request")
+      resource.locator.type === "github.pull_request" ||
+      resource.locator.type === "gitlab.repository")
   ) {
     return {
       ...resource,
@@ -299,6 +323,9 @@ function applyAuthorizationDecision(
 
 function legacyRepos(resources: readonly RunResource[]): string[] {
   return resources.flatMap((resource) => {
+    if (resource.locator.type === "gitlab.repository") {
+      return [formatRepoRef(`${GITLAB_REPOSITORY_PREFIX}${resource.locator.repository}`, resource.locator.revision)];
+    }
     if (resource.locator.type !== "github.repository") return [];
     const repository = resource.locator.repository;
     if (!hasGitHubRepositoryCheckoutIntent(resource)) return [];
@@ -340,6 +367,10 @@ export function explicitRepositoryResources(
 ): readonly ExplicitRunResource[] {
   return repos.map((entry) => {
     const { repo, branch } = parseRepoRef(entry);
+    if (repo.startsWith(GITLAB_REPOSITORY_PREFIX)) return {
+      kind: "code.repository", provider: "gitlab",
+      locator: { type: "gitlab.repository", repository: repo.slice(GITLAB_REPOSITORY_PREFIX.length), revision: branch },
+    } satisfies ExplicitRunResource;
     return {
       kind: "code.repository",
       provider: "github",
