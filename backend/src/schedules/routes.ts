@@ -15,6 +15,7 @@ import {
   updateScheduleForOrg,
 } from "./service";
 import { runCreateBodyLimit } from "../runs/run-create-policy";
+import { hasTrustedOrigin } from "../security/trusted-origin";
 
 export const schedulesRoutes = new Hono<AppEnv>();
 
@@ -48,6 +49,8 @@ schedulesRoutes.post("/", runCreateBodyLimit, async (c) => {
     return c.json({ error: "invalid JSON body" }, 400);
   }
 
+  if (body && "codePolicy" in body && !hasTrustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
+
   try {
     const schedule = await createScheduleForOrg(
       { orgId: c.get("orgId"), userId: c.get("userId") },
@@ -70,8 +73,15 @@ schedulesRoutes.patch("/:id", runCreateBodyLimit, async (c) => {
     return c.json({ error: "invalid JSON body" }, 400);
   }
 
+  const current = await getScheduleForOrg(c.get("orgId"), id);
+  const trustedOrigin = hasTrustedOrigin(c.req.raw);
+  if ((current?.codePolicy || (body && "codePolicy" in body)) && !trustedOrigin) {
+    return c.json({ error: "Invalid request origin." }, 403);
+  }
+
   try {
-    return c.json(await updateScheduleForOrg(c.get("orgId"), id, body, c.get("userId") ?? null));
+    return c.json(await updateScheduleForOrg(c.get("orgId"), id, body, c.get("userId") ?? null,
+      { requireNoCodePolicy: !trustedOrigin }));
   } catch (error) {
     if (error instanceof ScheduleServiceError) return c.json(error.body, error.status);
     throw error;
@@ -82,6 +92,7 @@ schedulesRoutes.patch("/:id", runCreateBodyLimit, async (c) => {
 schedulesRoutes.post("/:id/run-now", async (c) => {
   const schedule = await getScheduleForOrg(c.get("orgId"), c.req.param("id"));
   if (!schedule) return c.json({ error: "schedule not found" }, 404);
+  if (schedule.codePolicy && !hasTrustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
   try {
     const runId = await runScheduleNow(schedule, c.get("userId") ?? null);
     return c.json({ run_id: runId }, 201);

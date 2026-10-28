@@ -22,7 +22,7 @@ describe("automation recovery", () => {
 
   test("selects Automation agents from live capabilities without guessing Codex", () => {
     const editor = readScheduleSource("new-schedule-modal.tsx");
-    expect(editor).toContain("useEnabledEngines");
+    expect(editor).toContain("useEnabledEngineConfig");
     expect(editor).toContain("automationEditorEngineOptions");
     expect(editor).not.toContain("SCHEDULE_ENGINES");
     expect(editor).not.toContain('useState("codex")');

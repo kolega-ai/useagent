@@ -77,6 +77,7 @@ export interface ScheduleRecord {
   cost_limits: Record<string, unknown> | null;
   frequency_limits: Record<string, unknown> | null;
   approval_policy: Record<string, unknown> | null;
+  code_policy?: AutomationCodePolicy | null;
   enablement_policy: Record<string, unknown> | null;
   enabled: boolean;
   /** The cron loop's last tick; null for an automation only ever run by hand. */
@@ -85,6 +86,14 @@ export interface ScheduleRecord {
   last_run_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AutomationCodePolicy {
+  version: 1;
+  mode: "publish" | "review";
+  repository: string;
+  draft: boolean;
+  allowSandboxActions: boolean;
 }
 
 /** The moment an automation last ran, whichever trigger fired it. */
@@ -344,6 +353,7 @@ export interface FiringRecord {
   /** Live run status, joined from the runs log; null if the run is gone. */
   run_status: string | null;
   run_summary: string | null;
+  code_action?: { state: string; reason: string | null; url: string | null } | null;
 }
 
 /** Map a run status to a status-dot tone. */

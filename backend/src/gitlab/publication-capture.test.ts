@@ -3,8 +3,8 @@ import { access, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SandboxHandle } from "../sandboxes/provider";
-import { captureRepositoryPatch } from "./publication-capture";
-import { applyPatchAndDescribe } from "./publication-manifest";
+import { captureRepositoryPatch } from "../repositories/capture-patch";
+import { applyPatchAndDescribe } from "../repositories/patch-manifest";
 
 describe("publication capture", () => {
   test("captures staged, unstaged and untracked changes without changing the real index or running repository filters", async () => {

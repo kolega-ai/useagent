@@ -11,8 +11,8 @@ import { resolveRunSandbox, resolveSandboxBindingForSandbox } from "../sandboxes
 import { sandboxRuntimeLayout } from "../sandboxes/provider";
 import { authorizeGitLabProject, withGitLabCheckout } from "./checkout";
 import { gitLabRequest } from "./client";
-import { captureRepositoryPatch } from "./publication-capture";
-import { applyPatchAndDescribe } from "./publication-manifest";
+import { captureRepositoryPatch } from "../repositories/capture-patch";
+import { applyPatchAndDescribe } from "../repositories/patch-manifest";
 
 export async function prepareGitLabPublication(input: {
   readonly orgId: string; readonly userId: string; readonly runId: string;

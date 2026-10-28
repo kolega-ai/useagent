@@ -9,6 +9,7 @@ import { publishRunLifecycleChange } from "../runs/org-signals";
 import { isInternalRunOrigin } from "../runs/origin";
 import { completeRun } from "../runs/repo";
 import { settleFiring } from "../schedules/repo";
+import { settleCodeAction } from "../schedules/code-actions-repo";
 import { RUN_CANCEL, RUN_CREATE } from "./repo";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +143,7 @@ export async function acceptRunCancel(input: {
       if (run.status === "queued") {
         await completeRun(input.runId, "failed", CANCEL_SUMMARY, 0, tx);
         await settleFiring(input.runId, "failed", tx);
+        await settleCodeAction(input.runId, "failed", tx);
         await tx.execute(sql`
           update commands set state = 'completed', updated_at = now()
           where run_id = ${input.runId} and kind = ${RUN_CREATE} and state <> 'completed'`);

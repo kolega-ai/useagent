@@ -8,7 +8,7 @@ export class GitLabApiError extends Error {
   constructor(readonly status: number) { super(`GitLab API returned HTTP ${status}`); this.name = "GitLabApiError"; }
 }
 export interface GitLabRequestOptions {
-  readonly method?: "GET" | "POST";
+  readonly method?: "GET" | "POST" | "PUT";
   readonly body?: unknown;
   readonly signal?: AbortSignal;
 }

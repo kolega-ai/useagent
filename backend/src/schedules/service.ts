@@ -1,6 +1,7 @@
 import {
   ENGINE_IDS,
   type AutomationJson,
+  type AutomationCodePolicy,
   type EngineId,
   type ScheduleTrigger,
 } from "../db/schema";
@@ -38,6 +39,7 @@ import {
   RunPromptTooLargeError,
 } from "../commands/prompt-policy";
 import { isValidCron, isValidTimezone, nextOccurrence } from "./cron";
+import { assertCodePolicyEngine, assertCodePolicyRepository, parseCodePolicy } from "./code-policy";
 import {
   createSchedule,
   deleteSchedule,
@@ -315,6 +317,15 @@ export async function createScheduleForOrg(
   await assertModelOffered(engine, model, identity.userId);
   const skill = await parseSkillPin(identity.orgId, body.skill);
   const repos = (await parseRepos(identity.orgId, body)) ?? [];
+  let codePolicy: AutomationCodePolicy | null;
+  try {
+    codePolicy = parseCodePolicy(body.codePolicy) ?? null;
+    assertCodePolicyRepository(codePolicy, repos, identity.userId);
+    assertCodePolicyEngine(codePolicy, engine);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid code automation policy.";
+    throw new ScheduleServiceError(400, { error: message, message });
+  }
   const tags = stringArrayField(body, "tags") ?? [];
   const delivery = jsonObjectField(body, "delivery") ?? null;
   const notifications = jsonObjectField(body, "notifications") ?? null;
@@ -347,6 +358,7 @@ export async function createScheduleForOrg(
     costLimits,
     frequencyLimits,
     approvalPolicy,
+    codePolicy,
     enablementPolicy,
   });
   publishAutomationChange(identity.orgId, {
@@ -399,15 +411,19 @@ export function updateScheduleForOrg(
   id: string,
   body: Record<string, unknown>,
   actorId: string | null,
+  options: { readonly requireNoCodePolicy?: boolean } = {},
 ): Promise<ApiSchedule> {
-  return asAutomationActor(orgId, id, actorId, pausesOnly(body) ? "stop" : "change", () => updateSchedulePatch(orgId, id, body));
+  return asAutomationActor(orgId, id, actorId, pausesOnly(body) ? "stop" : "change", () => updateSchedulePatch(orgId, id, body, options));
 }
 
 async function updateSchedulePatch(
   orgId: string,
   id: string,
   body: Record<string, unknown>,
+  options: { readonly requireNoCodePolicy?: boolean },
 ): Promise<ApiSchedule> {
+  const current = await getScheduleForOrg(orgId, id);
+  if (!current) throw new ScheduleServiceError(404, { error: "schedule not found" });
   const patch: Partial<{
     name: string;
     cron: string;
@@ -427,6 +443,7 @@ async function updateSchedulePatch(
     costLimits: AutomationJson | null;
     frequencyLimits: AutomationJson | null;
     approvalPolicy: AutomationJson | null;
+    codePolicy: AutomationCodePolicy | null;
     enablementPolicy: AutomationJson | null;
     enabled: boolean;
   }> = {};
@@ -491,6 +508,20 @@ async function updateSchedulePatch(
   const approvalPolicy = jsonObjectField(body, "approvalPolicy");
   if (approvalPolicy !== undefined) patch.approvalPolicy = approvalPolicy;
 
+  if (body.codePolicy !== undefined || patch.repos !== undefined || patch.engine !== undefined) {
+    try {
+      const codePolicy = parseCodePolicy(body.codePolicy);
+      const effectivePolicy = codePolicy === undefined ? current.codePolicy : codePolicy;
+      if (effectivePolicy && current.botId) throw new Error("Repository actions require an independent automation, not a bot routine.");
+      assertCodePolicyRepository(effectivePolicy, patch.repos ?? current.repos, current.userId);
+      assertCodePolicyEngine(effectivePolicy, patch.engine ?? current.engine);
+      if (codePolicy !== undefined) patch.codePolicy = codePolicy;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid code automation policy.";
+      throw new ScheduleServiceError(400, { error: message, message });
+    }
+  }
+
   const enablementPolicy = jsonObjectField(body, "enablementPolicy");
   if (enablementPolicy !== undefined) patch.enablementPolicy = enablementPolicy;
 
@@ -502,8 +533,6 @@ async function updateSchedulePatch(
     patch.notifications !== undefined ||
     patch.enabled === true
   ) {
-    const current = await getScheduleForOrg(orgId, id);
-    if (!current) throw new ScheduleServiceError(404, { error: "schedule not found" });
     const engine = patch.engine ?? current.engine;
     const model = patch.model ?? current.model;
     assertModelAllowed(engine, model);
@@ -529,8 +558,13 @@ async function updateSchedulePatch(
     }
   }
 
-  const updated = await updateSchedule(orgId, id, patch);
-  if (!updated) throw new ScheduleServiceError(404, { error: "schedule not found" });
+  const updated = await updateSchedule(orgId, id, patch, { ...options, expectedGeneration: current.codeGeneration });
+  if (!updated) {
+    const latest = await getScheduleForOrg(orgId, id);
+    if (!latest) throw new ScheduleServiceError(404, { error: "schedule not found" });
+    if (options.requireNoCodePolicy && latest.codePolicy) throw new ScheduleServiceError(403, { error: "Invalid request origin." });
+    throw new ScheduleServiceError(409, { error: "automation_changed", message: "This automation changed while saving. Refresh and try again." });
+  }
   publishAutomationChange(orgId, {
     type: "automation",
     action: "updated",

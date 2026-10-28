@@ -56,6 +56,14 @@ export function permissionModeSupported(engine: string, mode?: PermissionMode): 
   return true;
 }
 
+/** Repository actions require a real sandbox and a permission mode the engine can enforce. */
+export function sandboxRepositoryActionsSupported(engine: string, allowSandboxActions: boolean): boolean {
+  const canonical = canonicalEngine(engine);
+  if (canonical === "chat" || canonical === "mock") return false;
+  return permissionModeSupported(engine, "approval-required") ||
+    (allowSandboxActions && permissionModeSupported(engine, "full-access"));
+}
+
 /** Thrown at the single run insert point when a run would be stored with a
  *  mode its engine cannot honour, whichever lane asked for it. */
 export class PermissionModeUnsupportedError extends Error {

@@ -143,6 +143,57 @@ checkout already present in a repository image or retained sandbox. If the
 connection is revoked, reconnect it before continuing the thread; its retained
 files are not deleted.
 
+### Automated pull requests and reviews
+
+In **Customize > Automations**, create an independent automation, choose an
+agent and model, then choose a repository action. **Open a pull or merge
+request** lets the agent publish its completed changes. **Review and merge pull
+or merge requests** selects one open, non-draft request per run and asks the
+agent to review its changes. Select exactly one repository and describe the
+work or review criteria in the instructions. New automations are paused; use
+**Run now** to test one, then enable its cadence if desired. The automation row
+shows its repository-action mode, and its history shows the run and action
+outcome with a link to any published or merged request. Choose a sandbox coding
+agent; Chat does not have a workspace. Pi requires sandbox actions to be
+allowed because it cannot request individual approvals.
+
+Enabling a repository action authorizes the trusted backend to publish or merge
+without asking again for each request. Select **Allow sandbox commands and file
+changes without asking** only if the automation should also act without the
+usual sandbox approval prompts. With Kolega Code, each eligible native
+permission is recorded before it is answered. Other agents use their supported
+permission mode. Editing, pausing or deleting the automation, or removing its
+owner from the organization, revokes pending repository actions. A change to an
+already running agent's native full-access mode does not retract commands that
+have already been authorized.
+
+For GitHub, connect an installation with permission to read the repository,
+write contents and create and merge pull requests. For GitLab.com, connect an
+account with the `api` scope and permission to push branches, create merge
+requests and merge them. The provider write credential stays in the trusted
+backend. Use provider branch protection and required checks as appropriate for
+the connected account; an account with bypass privileges can bypass provider
+rules. No model-provider key is added to the sandbox by this feature.
+
+An automatic review binds its decision to the request number and head commit,
+verifies the review workspace, and asks the provider to merge that exact head
+only when the provider reports it ready. A changed head, missing permission,
+unclear agent decision, changed automation, or failed run does not merge. The
+provider's SHA precondition protects the request head; a target branch can
+still move while a review or merge is in progress. The provider's rules remain
+the authority for that race. Reviews skip drafts and each automation reviews a
+given request revision at most once. GitLab reviews currently require the
+source and target branches to be in the same project and a common ancestor
+within 1,000 commits; bot routines and self-managed GitLab are not supported by
+this workflow. Existing workspaces are never replaced to satisfy a review.
+
+Test with an isolated repository: configure a publication automation to create
+a small harmless change, run it, and check the history and resulting request.
+Then configure a review automation for the same repository, run it on that
+non-draft request, and check the provider's merge record. Test both approval
+settings and the provider's branch-protection rules before using this on a
+production repository.
+
 ### Preparing a Daytona repository snapshot
 
 Create a **cold filesystem snapshot** in the Daytona organization selected by
@@ -304,8 +355,9 @@ sandbox can load the native session on a later turn; losing the sandbox does not
 restore that native session or its files. An interrupted in-flight turn cannot
 currently be reconstructed. Permission requests use the existing approval card;
 the composer's Plan option selects Plan mode and declines commands and writes;
-Manual selects Build mode and asks for native permissions. More permissive
-automatic approval modes are not offered for this engine. ACP output that cannot be represented by the
+Manual selects Build mode and asks for native permissions. An automation can
+explicitly opt in to automatic responses to eligible native permission requests.
+ACP output that cannot be represented by the
 shared event vocabulary is not projected as a separate UI protocol.
 When one tool call reports changes to multiple files, UseAgent lists the files
 but does not show an individual patch for each. A single-file patch spanning

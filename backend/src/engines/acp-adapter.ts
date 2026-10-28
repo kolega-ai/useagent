@@ -16,6 +16,7 @@ import { RUNTIME_CUBE_WARM_POOL_NAME, RUNTIME_GENERATION, RUNTIME_GENERATION_LAB
 import { runtimeRunSnapshot } from "./runtime-adapter";
 import { assertReadOnlyTurnAllowed } from "./runtime-thread-mode";
 import { prepareSandboxTurn } from "./sandbox-turn-preparation";
+import { codeSandboxPermission } from "../schedules/code-actions-repo";
 import { composeRunTurnPrompt, type EngineAdapter } from "./types";
 
 export const acpAdapter: EngineAdapter = {
@@ -55,6 +56,7 @@ export const acpAdapter: EngineAdapter = {
       bridge.onPermission((permission) => acpApprovals.request({
         runId: ctx.runId, threadId: ctx.threadId ?? ctx.runId, sessionId: sessionId!, permission,
         permissionMode: ctx.permissionMode ?? "approval-required", redact: prepared.redact,
+        authorizeAutomation: codeSandboxPermission,
       }), (permission) => acpApprovals.acknowledge(permission));
       await recordProviderSessionStarted(ctx, established.session, { provider: "kolega", source: "kolega", resumed: established.resumed });
       const summary = await runNativeBridgeTurn({

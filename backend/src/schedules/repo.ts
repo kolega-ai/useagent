@@ -1,10 +1,12 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
 import {
   runs,
+  automationCodeActions,
   scheduleFirings,
   schedules,
   type AutomationJson,
+  type AutomationCodePolicy,
   type EngineId,
   type ScheduleTrigger,
 } from "../db/schema";
@@ -41,6 +43,7 @@ export interface ApiSchedule {
   cost_limits: AutomationJson | null;
   frequency_limits: AutomationJson | null;
   approval_policy: AutomationJson | null;
+  code_policy?: AutomationCodePolicy | null;
   enablement_policy: AutomationJson | null;
   enabled: boolean;
   /** The cron loop's last tick for this schedule (its same-minute guard). */
@@ -66,6 +69,7 @@ export interface ApiFiring {
   /** Live run status/summary, joined from the runs log. Null if the run is gone. */
   run_status: string | null;
   run_summary: string | null;
+  code_action?: { state: string; reason: string | null; url: string | null } | null;
 }
 
 const MINUTE_MS = 60_000;
@@ -116,6 +120,7 @@ function toSchedule(s: ScheduleRecord, lastRunAt: Date | null = s.lastFiredAt): 
     cost_limits: s.costLimits,
     frequency_limits: s.frequencyLimits,
     approval_policy: s.approvalPolicy,
+    code_policy: s.codePolicy,
     enablement_policy: s.enablementPolicy,
     enabled: s.enabled,
     last_fired_at: s.lastFiredAt ? s.lastFiredAt.toISOString() : null,
@@ -182,6 +187,7 @@ export async function createSchedule(input: {
   costLimits: AutomationJson | null;
   frequencyLimits: AutomationJson | null;
   approvalPolicy: AutomationJson | null;
+  codePolicy?: AutomationCodePolicy | null;
   enablementPolicy: AutomationJson | null;
 }): Promise<ApiSchedule> {
   const [row] = await db
@@ -208,6 +214,7 @@ export async function createSchedule(input: {
       costLimits: input.costLimits,
       frequencyLimits: input.frequencyLimits,
       approvalPolicy: input.approvalPolicy,
+      codePolicy: input.codePolicy ?? null,
       enablementPolicy: input.enablementPolicy,
       // enabled defaults FALSE at the column — never auto-fire on create.
     })
@@ -240,15 +247,19 @@ export async function updateSchedule(
       | "costLimits"
       | "frequencyLimits"
       | "approvalPolicy"
+      | "codePolicy"
       | "enablementPolicy"
       | "enabled"
     >
   >,
+  options: { readonly expectedGeneration?: number; readonly requireNoCodePolicy?: boolean } = {},
 ): Promise<ApiSchedule | null> {
   const [row] = await db
     .update(schedules)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(and(eq(schedules.id, id), eq(schedules.orgId, orgId)))
+    .set({ ...patch, codeGeneration: sql`${schedules.codeGeneration} + 1`, updatedAt: new Date() })
+    .where(and(eq(schedules.id, id), eq(schedules.orgId, orgId),
+      ...(options.expectedGeneration === undefined ? [] : [eq(schedules.codeGeneration, options.expectedGeneration)]),
+      ...(options.requireNoCodePolicy ? [isNull(schedules.codePolicy)] : [])))
     .returning();
   return row ? toSchedule(row) : null;
 }
@@ -353,9 +364,14 @@ export async function listFirings(scheduleId: string): Promise<ApiFiring[]> {
       status: scheduleFirings.status,
       runStatus: runs.status,
       runSummary: runs.summary,
+      codeState: automationCodeActions.state,
+      codeReason: automationCodeActions.resultReason,
+      codeError: automationCodeActions.lastError,
+      codeUrl: automationCodeActions.resultUrl,
     })
     .from(scheduleFirings)
     .leftJoin(runs, eq(scheduleFirings.runId, runs.id))
+    .leftJoin(automationCodeActions, eq(scheduleFirings.runId, automationCodeActions.runId))
     .where(eq(scheduleFirings.scheduleId, scheduleId))
     .orderBy(desc(scheduleFirings.firedAt), desc(scheduleFirings.id));
 
@@ -368,5 +384,6 @@ export async function listFirings(scheduleId: string): Promise<ApiFiring[]> {
     status: r.status,
     run_status: r.runStatus ?? null,
     run_summary: r.runSummary ?? null,
+    code_action: r.codeState ? { state: r.codeState, reason: r.codeReason ?? r.codeError, url: r.codeUrl } : null,
   }));
 }

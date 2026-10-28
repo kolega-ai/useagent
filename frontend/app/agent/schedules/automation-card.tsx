@@ -96,6 +96,11 @@ export function AutomationCard({
             <Chip variant="caption" color={schedule.enabled ? "lime" : "neutral"} className="shrink-0">
               {schedule.enabled ? "Active" : "Paused"}
             </Chip>
+            {schedule.code_policy && (
+              <Chip variant="caption" color="soft" className="shrink-0">
+                {schedule.code_policy.mode === "publish" ? "Opens changes" : "Reviews and merges"}
+              </Chip>
+            )}
           </div>
           <p className="mt-0.5 line-clamp-1 text-caption-1-regular text-text-secondary">
             {schedule.prompt}

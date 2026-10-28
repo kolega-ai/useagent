@@ -6,6 +6,9 @@ import type { SandboxHandle, SandboxRuntimeLayout } from "../sandboxes/provider"
 import { SANDBOX_STATE_DIR } from "../sandboxes/sandbox-names";
 
 export const MAX_PATCH_BYTES = 25 * 1024 * 1024;
+export class NoRepositoryChangesError extends Error {
+  constructor() { super("The repository has no changes to publish."); this.name = "NoRepositoryChangesError"; }
+}
 
 function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'`; }
 
@@ -16,7 +19,7 @@ export async function captureRepositoryPatch(input: {
   readonly layout: SandboxRuntimeLayout;
   readonly signal: AbortSignal;
 }): Promise<Buffer> {
-  if (!/^[a-f0-9]{40}$/u.test(input.baseSha)) throw new Error("Invalid GitLab base commit");
+  if (!/^[a-f0-9]{40}$/u.test(input.baseSha)) throw new Error("Invalid repository base commit");
   input.signal.throwIfAborted();
   const stage = `${input.layout.home}/${SANDBOX_STATE_DIR}/publication-capture`;
   const patchPath = `${stage}/${randomUUID()}.patch`;
@@ -37,12 +40,13 @@ export async function captureRepositoryPatch(input: {
     `git --git-dir="$TMP/repo/.git" --work-tree="$DIR" read-tree ${quote(input.baseSha)}`,
     'git --git-dir="$TMP/repo/.git" --work-tree="$DIR" -c core.fsmonitor=false add -A -- .',
     `git --git-dir="$TMP/repo/.git" --work-tree="$DIR" -c core.fsmonitor=false diff --cached --no-ext-diff --no-renames --binary --full-index ${quote(input.baseSha)} -- > "$PATCH"`,
-    'test -s "$PATCH"',
+    'if ! test -s "$PATCH"; then printf "publication:no-changes\\n"; exit 3; fi',
   ].join("\n");
   try {
     const result = await input.sandbox.process.executeCommand(cmd, undefined, undefined, 120);
     input.signal.throwIfAborted();
     if (result.exitCode !== 0) {
+      if (result.exitCode === 3 && (result.result ?? "").trim() === "publication:no-changes") throw new NoRepositoryChangesError();
       throw new Error("Could not capture changes. Check that the repository has changes and its target branch has not moved since checkout.");
     }
     const info = await input.sandbox.fs.getFileDetails(patchPath);

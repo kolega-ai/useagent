@@ -799,6 +799,20 @@
       "when": 1792800000029,
       "tag": "0119_publication_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1792800000030,
+      "tag": "0120_automation_code_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1792800000031,
+      "tag": "0121_automation_code_claim_fence",
+      "breakpoints": true
     }
   ]
 }

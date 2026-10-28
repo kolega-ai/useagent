@@ -551,6 +551,7 @@ describe("GitHub publication gateway workflow", () => {
     const persistedClaims: string[] = [];
     const intendedCommits: string[] = [];
     let renewals = 0;
+    let authorityChecks = 0;
     const execute = createGithubPublicationToolExecutor(dependencies({
       getChangeSet: async () => row,
       readPayload: async () => payload,
@@ -565,6 +566,7 @@ describe("GitHub publication gateway workflow", () => {
       },
       recordIntent: async (input) => { intendedCommits.push(input.commitSha); return true; },
       renewClaim: async () => { renewals += 1; return true; },
+      authorizeEffect: async () => { authorityChecks += 1; },
       publish: async (_input, publisherDeps) => {
         await publisherDeps.assertLease?.();
         await publisherDeps.recordIntent?.(COMMIT);
@@ -593,10 +595,32 @@ describe("GitHub publication gateway workflow", () => {
     expect(persistedClaims).toEqual(["claim"]);
     expect(intendedCommits).toEqual([COMMIT]);
     expect(renewals).toBeGreaterThan(0);
+    expect(authorityChecks).toBe(1);
     expect(result.structuredContent?.publication).toMatchObject({
       state: "published",
       pull_request_number: 42,
     });
+  });
+
+  test("revoking automation authority stops a GitHub write even with a valid publication claim", async () => {
+    const payload = Buffer.from(JSON.stringify({ version: 1, files: [{ path: "README.md", mode: "100644", contentBase64: "aGk=" }] }));
+    const digest = createHash("sha256").update(payload).digest("hex");
+    let writes = 0;
+    const execute = createGithubPublicationToolExecutor(dependencies({
+      getChangeSet: async () => changeSet({ payloadStorageKey: digest, payloadSha256: digest, payloadSizeBytes: payload.length }),
+      readPayload: async () => payload,
+      authorizeEffect: async () => { throw new Error("authority revoked"); },
+      publish: async (_input, publisherDeps) => {
+        await publisherDeps.assertLease?.();
+        writes++;
+        throw new Error("unexpected write");
+      },
+    }));
+    const result = await execute(claims, "github_pull_request_publish", { changeSetId: "change-a", idempotencyKey: "key-a",
+      headBranch: "useagent/readme", commitMessage: "Update README", pullRequestTitle: "Update README",
+      pullRequestBody: "Prepared by UseAgent", draft: false });
+    expect(result.isError).toBe(true);
+    expect(writes).toBe(0);
   });
 
   test("a proven pre-ref lease failure resets pending and clears commit intent for retry", async () => {
