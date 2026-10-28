@@ -13,7 +13,7 @@ import { parseRepoRef } from "../github/repo-ref";
 import { RUN_TIMING_OUTCOMES, RUN_TIMING_STAGES } from "../runs/run-timing";
 import { hasExactGitHubRepositoryUrlProvenance } from "../resources/public-github";
 import { gitLabStoredRepository, GITLAB_REPOSITORY_PREFIX } from "../resources/gitlab-resolver";
-import { stageGitLabArchive } from "../gitlab/checkout";
+import { authorizeGitLabCheckout, stageGitLabArchive } from "../gitlab/checkout";
 import type { RunResource } from "../resources/types";
 import type { EngineRunContext } from "./types";
 import { truncate } from "./util";
@@ -27,6 +27,8 @@ type RepoCloneOptions = {
   readonly originUrl?: string;
   /** A trusted-plane checkout may provide a credential-free local archive. */
   readonly prepareCloneSource?: () => Promise<{ source: string; cleanup(): Promise<void> }>;
+  /** Recheck access before exposing an existing checkout to the agent. */
+  readonly verifyPreparedCheckout?: () => Promise<void>;
 };
 const ROOT_RUNTIME_LAYOUT: SandboxRuntimeLayout = {
   home: "/root",
@@ -165,8 +167,14 @@ export async function ensureRepoClone(
     emptyDirectoryState +
     `else echo state:occupied; fi`;
   const idState = (await sandbox.process.executeCommand(idScript, undefined, undefined, 15)).result ?? "";
-  if (idState.includes("state:reuse")) return false;
-  if (idState.includes("state:ownership")) return true;
+  if (idState.includes("state:reuse")) {
+    await options.verifyPreparedCheckout?.();
+    return false;
+  }
+  if (idState.includes("state:ownership")) {
+    await options.verifyPreparedCheckout?.();
+    return true;
+  }
 
   if (idState.includes("state:agent-branch")) {
     throw new Error(
@@ -441,6 +449,11 @@ export async function prepareRepos(
         runtimeLayout,
         ...(gitlab ? {
           originUrl: `https://${gitlab}.git`,
+          verifyPreparedCheckout: async () => {
+            ctx.signal.throwIfAborted();
+            await authorizeGitLabCheckout(ctx.orgId!, gitlab.slice(GITLAB_REPOSITORY_PREFIX.length));
+            ctx.signal.throwIfAborted();
+          },
           prepareCloneSource: () => stageGitLabArchive({ sandbox: sandbox as SandboxHandle, orgId: ctx.orgId!,
             repository: gitlab.slice(GITLAB_REPOSITORY_PREFIX.length), branch: parsed.branch, runtimeLayout, signal: ctx.signal }),
         } : {}),

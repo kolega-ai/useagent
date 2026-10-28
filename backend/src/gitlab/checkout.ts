@@ -85,13 +85,19 @@ export async function createGitLabArchive(input: {
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
+/** Check current organization access before exposing a checkout to an agent. */
+export async function authorizeGitLabCheckout(orgId: string, repository: string): Promise<string> {
+  const token = await gitLabToken(orgId);
+  if (!token) throw new Error("GitLab is not connected for this organization");
+  await gitLabProject(token, repository);
+  return token;
+}
+
 export async function stageGitLabArchive(input: {
   sandbox: SandboxHandle; orgId: string; repository: string; branch: string | null;
   runtimeLayout: SandboxRuntimeLayout; signal: AbortSignal;
 }): Promise<{ source: string; cleanup(): Promise<void> }> {
-  const token = await gitLabToken(input.orgId);
-  if (!token) throw new Error("GitLab is not connected for this organization");
-  await gitLabProject(token, input.repository);
+  const token = await authorizeGitLabCheckout(input.orgId, input.repository);
   const bytes = await createGitLabArchive({ ...input, token });
   input.signal.throwIfAborted();
   const directory = `${input.runtimeLayout.home}/${SANDBOX_STATE_DIR}/gitlab-checkouts`;

@@ -126,8 +126,10 @@ stays in the control plane. To take changes out, ask the agent to create a
 patch containing the desired changes and include a Markdown link to the patch
 file in its final answer. UseAgent publishes the linked sandbox file as a
 downloadable artifact; apply it to your own checkout after reviewing it.
-Replacing or disconnecting the token affects new checkouts, not
-the files already retained in an existing thread's sandbox.
+Access is rechecked when each turn prepares a GitLab checkout, including a
+checkout already present in a repository image or retained sandbox. If the
+connection is revoked, reconnect it before continuing the thread; its retained
+files are not deleted.
 
 ### Preparing a Daytona repository snapshot
 
