@@ -45,6 +45,7 @@ export function modeWithAutoApply(mode: PermissionMode, applyEdits: boolean): Pe
  *  rule (permissionModeSupported): Pi's bridge mediates no approvals, so nothing
  *  below Full access can be enforced there and the run would be refused. */
 export function permissionModeOffered(engine: string | undefined, mode: PermissionMode): boolean {
+  if (engine === "kolega") return mode === "read-only" || mode === "approval-required";
   return mode === "full-access" || engine !== "pi";
 }
 
@@ -52,7 +53,7 @@ export function permissionModeOffered(engine: string | undefined, mode: Permissi
  *  honour it, else Full access. The choice itself survives an engine switch
  *  and back. */
 export function permissionModeFor(engine: string | undefined, mode: PermissionMode): PermissionMode {
-  return permissionModeOffered(engine, mode) ? mode : "full-access";
+  return permissionModeOffered(engine, mode) ? mode : engine === "kolega" ? "approval-required" : "full-access";
 }
 
 /** What the edits switch really lets through on each engine: the resident runtime

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import { MAX_RPC_FRAME_BYTES } from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-frame";
 import type { SandboxHandle, SandboxProcess, SandboxPtyHandle } from "../sandboxes/provider";
 
@@ -22,6 +23,12 @@ export function piProcessSessionPrefix(sandboxId: string): string {
   return `useagent-pi-ps-${owner}-`;
 }
 
+/** Separate namespace so cleaning one native protocol never kills another. */
+export function acpProcessSessionPrefix(sandboxId: string): string {
+  const owner = createHash("sha256").update(sandboxId).digest("hex").slice(0, 16);
+  return `useagent-acp-ps-${owner}-`;
+}
+
 export function processSessionTransportAvailable(process: SandboxProcess): boolean {
   return typeof process.getSessionCommand === "function" &&
     typeof process.sendSessionCommandInput === "function";
@@ -31,18 +38,25 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function ownedSpoolPaths(processSessionId: string): { stdout: string; stderr: string } {
-  if (!/^useagent-pi-ps-[a-f0-9]{16}-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(processSessionId)) {
-    throw new Error("Pi process-session id is not in the owned namespace");
+function ownedSpoolPaths(processSessionId: string, directory = PI_RPC_OUTPUT_DIR): { stdout: string; stderr: string } {
+  if (!/^useagent-(?:pi|acp)-ps-[a-f0-9]{16}-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(processSessionId)) {
+    throw new Error("Native process-session id is not in the owned namespace");
   }
   return {
-    stdout: `${PI_RPC_OUTPUT_DIR}/${processSessionId}.stdout`,
-    stderr: `${PI_RPC_OUTPUT_DIR}/${processSessionId}.stderr`,
+    stdout: `${directory}/${processSessionId}.stdout`,
+    stderr: `${directory}/${processSessionId}.stderr`,
   };
 }
 
-function spoolLaunchCommand(command: string, paths: { stdout: string; stderr: string }): string {
-  return `umask 077; install -d -m 700 ${shellQuote(PI_RPC_OUTPUT_DIR)}; ` +
+export function spoolLaunchCommand(command: string, paths: { stdout: string; stderr: string }, pipeStdout = false): string {
+  if (pipeStdout) {
+    // Some native agents require stdout to be a pipe, not a regular file. Keep
+    // the bounded spool reader but insert a pipe and preserve the agent's exit.
+    const pipeline = `( ${command} ) 2>${shellQuote(paths.stderr)} | cat >${shellQuote(paths.stdout)}`;
+    return `umask 077; install -d -m 700 ${shellQuote(posix.dirname(paths.stdout))}; ` +
+      `exec /bin/bash -o pipefail -c ${shellQuote(pipeline)}`;
+  }
+  return `umask 077; install -d -m 700 ${shellQuote(posix.dirname(paths.stdout))}; ` +
     `exec 3>${shellQuote(paths.stdout)} 4>${shellQuote(paths.stderr)}; ( ${command} ) >&3 2>&4`;
 }
 
@@ -63,16 +77,16 @@ function exactSpoolRemovalCommand(paths: { stdout: string; stderr: string }): st
   return `rm -f -- ${shellQuote(paths.stdout)} ${shellQuote(paths.stderr)}`;
 }
 
-function spoolInventoryCommand(processPrefix: string): string {
-  const inventory = `find ${shellQuote(PI_RPC_OUTPUT_DIR)} -maxdepth 1 -type f ` +
+function spoolInventoryCommand(processPrefix: string, directory = PI_RPC_OUTPUT_DIR): string {
+  const inventory = `find ${shellQuote(directory)} -maxdepth 1 -type f ` +
     `\\( -name ${shellQuote(`${processPrefix}*.stdout`)} -o ` +
     `-name ${shellQuote(`${processPrefix}*.stderr`)} \\) -printf '%f\\n' | ` +
     `head -n ${PROCESS_SESSION_SPOOL_INVENTORY_LIMIT + 1}`;
-  return `if [ -d ${shellQuote(PI_RPC_OUTPUT_DIR)} ]; then ` +
+  return `if [ -d ${shellQuote(directory)} ]; then ` +
     `/bin/bash -o pipefail -c ${shellQuote(inventory)}; fi`;
 }
 
-function parseSpoolInventory(result: string, processPrefix: string): string[] {
+function parseSpoolInventory(result: string, processPrefix: string, directory = PI_RPC_OUTPUT_DIR): string[] {
   const basenames = result.split("\n").filter(Boolean);
   if (basenames.length > PROCESS_SESSION_SPOOL_INVENTORY_LIMIT) {
     throw new Error("Pi owned spool inventory exceeds the cleanup limit");
@@ -84,7 +98,7 @@ function parseSpoolInventory(result: string, processPrefix: string): string[] {
   for (const basename of basenames) {
     if (!expected.test(basename)) throw new Error("Pi owned spool inventory is invalid");
   }
-  return basenames.map((basename) => `${PI_RPC_OUTPUT_DIR}/${basename}`);
+  return basenames.map((basename) => `${directory}/${basename}`);
 }
 
 function capturedSpoolRemovalCommand(paths: readonly string[]): string {
@@ -93,9 +107,10 @@ function capturedSpoolRemovalCommand(paths: readonly string[]): string {
 
 /** Delete only useAgent-owned Pi writers from a retained Daytona sandbox.
  * Missing inventory or deletion authority is an unsafe unknown, so fail closed. */
-export async function cleanupOwnedPiTransports(
+async function cleanupOwnedNativeTransports(
   sandbox: SandboxHandle,
-  options: { readonly timeoutMs?: number } = {},
+  protocol: "pi" | "acp",
+  options: { readonly timeoutMs?: number; readonly spoolDirectory?: string } = {},
 ): Promise<void> {
   const process = sandbox.process;
   if (typeof process.sendSessionCommandInput !== "function") return;
@@ -126,11 +141,12 @@ export async function cleanupOwnedPiTransports(
     process.listSessions!(),
     process.listPtySessions!(),
   ]));
-  const processPrefix = piProcessSessionPrefix(sandbox.id);
+  const processPrefix = protocol === "pi" ? piProcessSessionPrefix(sandbox.id) : acpProcessSessionPrefix(sandbox.id);
   const ownedSessions = sessions.filter(({ sessionId }) => sessionId.startsWith(processPrefix));
-  for (const session of ownedSessions) ownedSpoolPaths(session.sessionId);
+  const directory = options.spoolDirectory ?? PI_RPC_OUTPUT_DIR;
+  for (const session of ownedSessions) ownedSpoolPaths(session.sessionId, directory);
   const spoolInventory = await withinDeadline(() => process.executeCommand(
-    spoolInventoryCommand(processPrefix),
+    spoolInventoryCommand(processPrefix, directory),
     undefined,
     undefined,
     Math.max(1, Math.ceil((deadline - Date.now()) / 1_000)),
@@ -138,7 +154,7 @@ export async function cleanupOwnedPiTransports(
   if (spoolInventory.exitCode !== 0 || typeof spoolInventory.result !== "string") {
     throw new Error("Pi owned spool inventory failed");
   }
-  const capturedSpoolPaths = parseSpoolInventory(spoolInventory.result, processPrefix);
+  const capturedSpoolPaths = parseSpoolInventory(spoolInventory.result, processPrefix, directory);
   for (const session of ownedSessions) {
     await withinDeadline(() => process.deleteSession(session.sessionId));
   }
@@ -149,7 +165,7 @@ export async function cleanupOwnedPiTransports(
     }
   }
   for (const session of ptys) {
-    if (!session.id.startsWith(LEGACY_PI_PTY_PREFIX)) continue;
+    if (protocol !== "pi" || !session.id.startsWith(LEGACY_PI_PTY_PREFIX)) continue;
     await withinDeadline(() => process.killPtySession!(session.id));
   }
   if (capturedSpoolPaths.length > 0) {
@@ -161,6 +177,14 @@ export async function cleanupOwnedPiTransports(
     ));
     if (cleanup.exitCode !== 0) throw new Error("Pi owned spool cleanup failed");
   }
+}
+
+export async function cleanupOwnedPiTransports(sandbox: SandboxHandle, options: { readonly timeoutMs?: number } = {}): Promise<void> {
+  await cleanupOwnedNativeTransports(sandbox, "pi", options);
+}
+
+export async function cleanupOwnedAcpTransports(sandbox: SandboxHandle, options: { readonly timeoutMs?: number; readonly spoolDirectory?: string } = {}): Promise<void> {
+  await cleanupOwnedNativeTransports(sandbox, "acp", options);
 }
 
 export interface PiRpcTransport {
@@ -227,8 +251,10 @@ export class ProcessSessionPiRpcTransport implements PiRpcTransport {
     private readonly processSessionId: string,
     private readonly command: string,
     private readonly onData: (data: Uint8Array) => void,
+    spoolDirectory = PI_RPC_OUTPUT_DIR,
+    private readonly pipeStdout = false,
   ) {
-    this.#spoolPaths = ownedSpoolPaths(processSessionId);
+    this.#spoolPaths = ownedSpoolPaths(processSessionId, spoolDirectory);
   }
 
   async start(): Promise<void> {
@@ -241,7 +267,7 @@ export class ProcessSessionPiRpcTransport implements PiRpcTransport {
     await this.process.createSession(this.processSessionId);
     if (this.#tearingDown) return;
     const command = await this.process.executeSessionCommand(this.processSessionId, {
-      command: spoolLaunchCommand(this.command, this.#spoolPaths),
+      command: spoolLaunchCommand(this.command, this.#spoolPaths, this.pipeStdout),
       runAsync: true,
       suppressInputEcho: true,
     });

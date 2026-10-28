@@ -29,7 +29,7 @@ function parseApproval(frame: NativeFrame): PendingApproval | null {
 export function selectPendingApproval(frames: readonly NativeFrame[]): PendingApproval | null {
   const pending = new Map<string, PendingApproval>();
   for (const frame of [...frames].sort((a, b) => a.seq - b.seq)) {
-    if (frame.provider !== "t3") continue;
+    if (frame.provider !== "t3" && frame.provider !== "kolega") continue;
     if (frame.eventType === "approval.requested") {
       const approval = parseApproval(frame);
       if (approval) pending.set(approval.id, approval);

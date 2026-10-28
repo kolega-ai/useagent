@@ -12,7 +12,7 @@ import { chatLlmEnabled } from "../chat/stream";
 import { enabledEnginesForEnv } from "../env";
 import { providerGatewayProblem } from "../provider-gateway/config";
 
-export const USER_FACING_ENGINES = ["chat", "opencode", "claude", "codex", "pi"] as const;
+export const USER_FACING_ENGINES = ["chat", "opencode", "claude", "codex", "pi", "kolega"] as const;
 export type UserFacingEngineId = (typeof USER_FACING_ENGINES)[number];
 
 const POSITIVE_HEALTH = new Set(["ready", "healthy", "ok", "pass", "passed", "verified"]);
@@ -78,6 +78,7 @@ export const ENGINE_DISPLAY_NAMES: Record<UserFacingEngineId, string> = {
   claude: "Claude Code",
   codex: "Codex",
   pi: "Pi",
+  kolega: "Kolega Code",
 };
 
 function unavailableMessage(readiness: EngineReadiness): string {
@@ -86,6 +87,8 @@ function unavailableMessage(readiness: EngineReadiness): string {
     ? "Anthropic"
     : readiness.provider === "openai"
       ? "OpenAI"
+      : readiness.provider === "deepseek"
+        ? "DeepSeek"
       : readiness.provider === "cerebras"
         ? "Cerebras"
         : readiness.provider === "opencode"
@@ -191,6 +194,8 @@ export function modelProviderReadinessErrorBody(
       ? "OpenAI"
       : provider === "openrouter"
         ? "OpenRouter"
+        : provider === "deepseek"
+          ? "DeepSeek"
         : provider === "cerebras"
           ? "Cerebras"
           : provider === "opencode"

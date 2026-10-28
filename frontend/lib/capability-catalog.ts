@@ -64,7 +64,7 @@ export interface CapabilityCatalog {
   };
 }
 
-const ENGINES: ReadonlySet<string> = new Set(["chat", "opencode", "claude", "codex", "pi"]);
+const ENGINES: ReadonlySet<string> = new Set(["chat", "opencode", "claude", "codex", "pi", "kolega"]);
 const EFFECTS = new Set(["artifact_create", "artifact_update", "artifact_publish", "not_declared"]);
 
 function record(value: unknown): Record<string, unknown> | null {

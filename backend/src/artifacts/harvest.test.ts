@@ -128,6 +128,7 @@ describe("listing parsers", () => {
         "node_modules/dependency",
         ".useagent-inputs",
         ".claude",
+        ".kolega",
         ".config",
         "coverage",
         "screenshots",
@@ -139,6 +140,7 @@ describe("listing parsers", () => {
         "node_modules/dependency/package.json",
         ".useagent-inputs/user.pdf",
         ".claude/settings.json",
+        ".kolega/session.json",
         ".config/auth.json",
         "coverage/index.html",
         "screenshots/screenshot-1786558088313.png",
@@ -154,6 +156,7 @@ describe("listing parsers", () => {
       expect(listing).not.toContain(".useagent-inputs/user.pdf");
       expect(listing).not.toContain("screenshots/");
       expect(listing).not.toContain(".claude/");
+      expect(listing).not.toContain(".kolega/");
       expect(listing).not.toContain(".config/");
       expect(listing).not.toContain("coverage/");
       const runtimeListing = listing.replaceAll(workspace, "/root/work");

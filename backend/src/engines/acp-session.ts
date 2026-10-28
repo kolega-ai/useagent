@@ -21,13 +21,20 @@ export class AcpSessionControl {
   private earlyUpdates: Array<{ sessionId: string; update: AcpMessage }> = [];
   private earlyBytes = 0;
   private readonly client: AcpClient;
+  private readonly permissionRequests = new WeakMap<object, AcpPermission>();
 
   constructor(
     send: (line: string) => Promise<void>,
     private readonly permission: (request: AcpPermission) => Promise<string | null>,
     private readonly update: (sessionId: string, update: AcpMessage) => void,
+    private readonly permissionSent?: (request: AcpPermission) => void,
   ) {
-    this.client = new AcpClient(send, (method, params) => this.incomingRequest(method, params), (method, params) => this.notification(method, params));
+    this.client = new AcpClient(send, (method, params) => this.incomingRequest(method, params), (method, params) => this.notification(method, params), (method, params) => {
+      if (method !== "session/request_permission" || !params || typeof params !== "object") return;
+      const request = this.permissionRequests.get(params);
+      if (request) this.permissionSent?.(request);
+      this.permissionRequests.delete(params);
+    });
   }
 
   ingest(bytes: Uint8Array): void { this.client.ingest(bytes); }
@@ -80,9 +87,9 @@ export class AcpSessionControl {
     await this.client.request("session/set_config_option", { sessionId, configId, value });
   }
 
-  async prompt(text: string, timeoutMs: number): Promise<string> {
+  async prompt(text: string, timeoutMs: number, onSent?: () => void): Promise<string> {
     const sessionId = this.requireSession();
-    const result = object(await this.client.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] }, timeoutMs));
+    const result = object(await this.client.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] }, timeoutMs, onSent));
     if (typeof result?.stopReason !== "string") throw new Error("ACP prompt ended without a stop reason");
     return result.stopReason;
   }
@@ -106,7 +113,9 @@ export class AcpSessionControl {
       if (typeof option?.optionId !== "string" || typeof option.kind !== "string" || typeof option.name !== "string") return [];
       return [{ optionId: option.optionId, kind: option.kind, name: option.name }];
     });
-    const selected = await this.permission({ sessionId: this.requireSession(), toolCall: input.toolCall, options });
+    const request = { sessionId: this.requireSession(), toolCall: input.toolCall, options };
+    this.permissionRequests.set(input, request);
+    const selected = await this.permission(request);
     if (!selected || !options.some((option) => option.optionId === selected)) return { outcome: { outcome: "cancelled" } };
     return { outcome: { outcome: "selected", optionId: selected } };
   }

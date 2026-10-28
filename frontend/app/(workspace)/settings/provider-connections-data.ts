@@ -185,6 +185,12 @@ export const PROVIDER_LABELS: Record<
     keyHint: "Cerebras API key",
     keyPlaceholder: "csk-...",
   },
+  deepseek: {
+    name: "DeepSeek",
+    scope: "DeepSeek inference models",
+    keyHint: "DeepSeek API key",
+    keyPlaceholder: "DeepSeek API key",
+  },
   daytona: {
     name: "Daytona",
     scope: "Personal cloud sandbox runtime",

@@ -764,7 +764,7 @@ describe("runs", () => {
       body: { prompt: "x", engine: "nonsense" },
     });
     expect(status).toBe(400);
-    expect(body.error).toBe("engine must be one of: chat, opencode, claude, codex, pi");
+    expect(body.error).toBe("engine must be one of: chat, opencode, claude, codex, pi, kolega");
     for (const internal of ["mock", "daytona", "claude-sdk", "acp"]) {
       expect(body.error).not.toContain(internal);
     }

@@ -13,6 +13,8 @@ import type { EngineRunContext, HarnessAdapter } from "./types";
 import type { RuntimeEngineId } from "./runtime-orchestration";
 import { piAdapter } from "./pi-adapter";
 import { piHarness, piProviderDriver } from "./pi-provider-driver";
+import { acpAdapter } from "./acp-adapter";
+import { acpHarness, acpProviderDriver } from "./acp-provider-driver";
 import type { SandboxProviderKind } from "@useagent/sandbox-contract";
 
 // Register the native lifecycle drivers. `mock` is NOT registered here; it
@@ -72,6 +74,11 @@ const providerRegistry: Readonly<Record<string, ProviderRegistration>> = {
   daytona: opencodeRegistration,
   opencode: opencodeRegistration,
   pi: piRegistration,
+  kolega: {
+    driver: acpProviderDriver,
+    execution: { kind: "provider", run: (ctx) => acpAdapter.run(ctx) },
+    harnessAdapterCompatibility: acpHarness,
+  },
 };
 
 function isRuntimeEngineId(provider: string): provider is RuntimeEngineId {

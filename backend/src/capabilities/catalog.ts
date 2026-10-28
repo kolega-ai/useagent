@@ -92,6 +92,7 @@ function engineRuntime(
     if (engine === "opencode") return "any model · cloud";
     if (engine === "claude") return "Anthropic agent · cloud";
     if (engine === "codex") return "OpenAI agent · cloud";
+    if (engine === "kolega") return "Kolega Code · cloud";
     return "native Pi harness · cloud";
   })();
   if (engine === "chat") return { kind: "direct", label };

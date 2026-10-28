@@ -67,6 +67,13 @@ const PERSISTED_OPENCODE_MODELS = new Set<string>([CEREBRAS_GEMMA_MODEL]);
 export const DEFAULT_OPENCODE_MODEL = FAST_OPENCODE_MODEL;
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
 export const DEFAULT_CODEX_MODEL = FAST_CODEX_MODEL;
+export const DEFAULT_KOLEGA_MODEL = "deepseek/deepseek-flash";
+const KOLEGA_MODELS = [
+  DEFAULT_KOLEGA_MODEL, "deepseek/deepseek-v4-pro",
+  "openai/gpt-5.6-sol", "openai/gpt-5.6-luna",
+  "anthropic/claude-opus-5", "anthropic/claude-sonnet-5",
+  "openrouter/moonshotai/kimi-k3", "openrouter/google/gemini-3.7-flash",
+] as const;
 
 function codexModels(
   env: Record<string, string | undefined> = process.env,
@@ -83,6 +90,8 @@ export function allowedModelsForEngine(
   env: Record<string, string | undefined> = process.env,
 ): readonly string[] {
   switch (engine) {
+    case "kolega":
+      return KOLEGA_MODELS;
     case "opencode":
       return [...Object.values(OPENCODE_ALLOWED_MODELS).flat(), ...freeModelLane()];
     case "daytona":
@@ -106,6 +115,8 @@ export function defaultModelForEngine(
   env: Record<string, string | undefined> = process.env,
 ): string {
   switch (engine) {
+    case "kolega":
+      return DEFAULT_KOLEGA_MODEL;
     case "opencode":
     case "daytona":
     case "pi":
@@ -129,6 +140,8 @@ export function isModelAllowedForEngine(
 ): boolean {
   if (!model.trim()) return false;
   switch (engine) {
+    case "kolega":
+      return (KOLEGA_MODELS as readonly string[]).includes(model);
     case "mock":
       return true;
     case "opencode":

@@ -7,6 +7,7 @@ test("opens, filters session updates and waits for an explicit permission decisi
   const sent: Array<Record<string, unknown>> = [];
   const updates: unknown[] = [];
   const decision = Promise.withResolvers<string | null>();
+  let acknowledged = false;
   let client: AcpSessionControl;
   client = new AcpSessionControl(async (line) => {
     const message = JSON.parse(line) as Record<string, unknown>;
@@ -15,16 +16,18 @@ test("opens, filters session updates and waits for an explicit permission decisi
     if (message.method === "session/new") queueMicrotask(() => {
       client.ingest(new TextEncoder().encode(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { sessionId: "native" } })}\n${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "native", update: { sessionUpdate: "available_commands_update" } } })}\n`));
     });
-  }, () => decision.promise, (_id, update) => updates.push(update));
+  }, () => decision.promise, (_id, update) => updates.push(update), () => { acknowledged = true; });
   expect(await client.open("/work")).toBe("native");
   expect(updates).toEqual([{ sessionUpdate: "available_commands_update" }]);
   client.ingest(frame({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "other", update: { sessionUpdate: "agent_message_chunk" } } }));
   client.ingest(frame({ jsonrpc: "2.0", id: "ask", method: "session/request_permission", params: { sessionId: "native", toolCall: { title: "write" }, options: [{ optionId: "allow", kind: "allow_once", name: "Allow" }, { optionId: "deny", kind: "reject_once", name: "Deny" }] } }));
   await Promise.resolve();
   expect(sent.filter((message) => message.id === "ask")).toEqual([]);
+  expect(acknowledged).toBe(false);
   decision.resolve("deny");
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(sent.find((message) => message.id === "ask")?.result).toEqual({ outcome: { outcome: "selected", optionId: "deny" } });
+  expect(acknowledged).toBe(true);
   await client.cancel();
   expect(sent.at(-1)).toEqual({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId: "native" } });
   expect(updates).toHaveLength(1);

@@ -246,8 +246,8 @@ export async function createRun(
   // The one place every lane inserts a run: a mode the engine cannot honour
   // never reaches the row, whoever asked for it (a child of a read-only turn
   // spawned on Pi, a bot handoff to a Pi bot).
-  const permissionMode = input.permissionMode ?? configuredRuntimeMode();
-  if (permissionMode !== "full-access" && !permissionModeSupported(input.engine)) {
+  const permissionMode = input.permissionMode ?? (input.engine === "kolega" ? "approval-required" : configuredRuntimeMode());
+  if (!permissionModeSupported(input.engine, permissionMode)) {
     throw new PermissionModeUnsupportedError(input.engine, permissionMode);
   }
   const primaryRepo = input.repos?.[0] ? parseRepoRef(input.repos[0]).repo : null;

@@ -45,6 +45,21 @@ function assertNoCredentialMaterial(value: unknown, secret: string): void {
 }
 
 describe("provider connections", () => {
+  test("stores a DeepSeek connection encrypted and keeps it out of API responses", async () => {
+    const session = await createOrgSession("deepseek-connection");
+    const apiKey = `test-key-${crypto.randomUUID()}`;
+    const result = await json<any>("/api/provider-connections/deepseek/api-key", {
+      method: "PUT", cookies: session.cookies, body: { apiKey },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body.connection.provider).toBe("deepseek");
+    assertNoCredentialMaterial(result.body, apiKey);
+    const [row] = await db.select().from(providerConnections).where(and(
+      eq(providerConnections.orgId, session.orgId), eq(providerConnections.provider, "deepseek"),
+    ));
+    expect(row?.credentialCiphertext).toBeTruthy();
+    expect(row?.credentialCiphertext).not.toContain(apiKey);
+  });
   async function userIdForEmail(email: string): Promise<string> {
     const [account] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
     if (!account) throw new Error(`missing test user ${email}`);

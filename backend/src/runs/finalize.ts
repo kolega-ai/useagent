@@ -63,7 +63,7 @@ import { withTransientDbRetry } from "../db/transient-retry";
  *  claude-sdk -> claude) run the same adapter, so they normalize into this set via
  *  {@link canonicalEngine} and are NOT left silently outside the lane. Only `mock`
  *  (scripted) has no provider source to translate. */
-const CANONICAL_ENGINES = new Set(["opencode", "acp", "claude", "codex", "pi"]);
+const CANONICAL_ENGINES = new Set(["opencode", "acp", "claude", "codex", "pi", "kolega"]);
 
 export function terminalCanonicalizationEligible(engine: string): boolean {
   return CANONICAL_ENGINES.has(canonicalEngine(engine));

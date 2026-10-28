@@ -4,6 +4,20 @@ import { AcpClient } from "./acp-client";
 const bytes = (value: unknown) => new TextEncoder().encode(`${JSON.stringify(value)}\n`);
 
 describe("ACP client", () => {
+  test("reports delivery only after the process transport accepts the request", async () => {
+    const transport = Promise.withResolvers<void>();
+    let delivered = false;
+    const client = new AcpClient(() => transport.promise, async () => ({}), () => {});
+    const response = client.request("session/prompt", {}, 1000, () => { delivered = true; });
+    expect(delivered).toBe(false);
+    transport.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(delivered).toBe(true);
+    client.ingest(bytes({ jsonrpc: "2.0", id: 1, result: {} }));
+    await response;
+    client.close();
+  });
   test("correlates fragmented responses and streams notifications", async () => {
     const sent: string[] = [];
     const updates: unknown[] = [];

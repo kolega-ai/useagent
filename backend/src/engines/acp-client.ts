@@ -23,9 +23,10 @@ export class AcpClient {
     private readonly send: AcpSend,
     private readonly onRequest: AcpRequestHandler,
     private readonly onNotification: (method: string, params: unknown) => void,
+    private readonly onReplySent?: (method: string, params: unknown) => void,
   ) {}
 
-  request(method: string, params: unknown, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<unknown> {
+  request(method: string, params: unknown, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, onSent?: () => void): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error("ACP connection is closed"));
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return Promise.reject(new Error("invalid ACP request timeout"));
     const id = ++this.nextId;
@@ -35,9 +36,10 @@ export class AcpClient {
         reject(new Error(`ACP ${method} timed out`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      void this.write({ jsonrpc: "2.0", id, method, params }).catch(() => {
-        this.close("ACP transport write failed");
-      });
+      void this.write({ jsonrpc: "2.0", id, method, params }).then(
+        () => onSent?.(),
+        () => this.close("ACP transport write failed"),
+      );
     });
   }
 
@@ -88,7 +90,10 @@ export class AcpClient {
       if (typeof message.id === "string" || typeof message.id === "number") {
         const id = message.id;
         void this.onRequest(message.method, message.params).then(
-          (result) => this.write({ jsonrpc: "2.0", id, result: result ?? {} }),
+          async (result) => {
+            await this.write({ jsonrpc: "2.0", id, result: result ?? {} });
+            this.onReplySent?.(message.method as string, message.params);
+          },
           () => this.write({ jsonrpc: "2.0", id, error: { code: -32603, message: "Request could not be handled" } }),
         ).catch(() => this.close("ACP transport write failed"));
       } else {

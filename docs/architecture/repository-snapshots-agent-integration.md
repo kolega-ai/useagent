@@ -44,8 +44,25 @@ synthetic local model. It exercises session creation, Plan/Build configuration, 
 permission, process restart, session loading, missing-session rejection,
 follow-up and cancellation. It does not test UseAgent's sandbox, gateway or UI integration.
 
-Status: the ACP protocol client and session-control tests are groundwork only.
-The production sandbox transport, provider driver, event and approval routing,
-gateway configuration, image installation, engine registration and selector
-are not implemented. Do not enable or advertise the engine until those paths
-and their security/recovery tests are complete.
+The native driver is registered as `kolega` behind the existing operator
+engine gate. It uses a separate process-session namespace and a pipe-backed
+output spool because the agent's ACP implementation requires a pipe. Native
+session ids and sandbox identity are persisted through the shared provider
+session seam. Restart recovery fences and removes an old process before a
+subsequent turn. Session state cannot be restored after the sandbox is lost,
+and an interrupted in-flight turn cannot be reconstructed.
+
+The sandbox receives a scoped gateway capability through the existing local
+broker, never the upstream key. DeepSeek Responses requests have a dedicated
+gateway route and fail-closed model, output and tool checks. OpenAI, Anthropic
+and OpenRouter use their existing gateway routes. Native permissions are asked
+through the existing approval surface, with durable intent and a receipt after
+the native response is sent. Read-only turns select Plan mode and refuse
+commands and writes; other turns select Build mode and request approval.
+
+Kolega Code 0.47.1 and all Python dependencies are pinned by the hash-locked
+`backend/acp-runtime/requirements.txt`; the native image recipe installs it.
+Custom snapshots must carry the same runtime. Gigacode remains in the agent;
+ACP reports delegate progress on the parent tool call, which is shown as tool
+activity. The product does not yet expose a separate Gigacode or Plan/Build
+control or a recovered in-flight sub-agent transcript.

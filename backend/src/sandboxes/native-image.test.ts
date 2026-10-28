@@ -39,6 +39,7 @@ function inputs(overrides: Partial<NativeImageInputs> = {}): NativeImageInputs {
     runtimeDependencyPackage: Buffer.from("{}"),
     piPackage: Buffer.from("{}"),
     piLock: Buffer.from("{}"),
+    acpLock: Buffer.from("fixture lock"),
     claudeEnvironment: { ANTHROPIC_BASE_URL: "https://gateway.example/anthropic", CLAUDE_CONFIG_DIR: "/home/user/.useagent/claude" },
     ...overrides,
   };
@@ -183,7 +184,7 @@ ${desktopToolchainCommand(CUBE_LAYOUT)}
   test("cover bun, the runtime, every driver, Pi, documents and desktop in order", () => {
     const steps = nativeImageSteps(BOX_LAYOUT, inputs());
     expect(steps.map((step) => step.name)).toEqual([
-      "bun", "native-runtime", "codex", "claude", "opencode", "boot", "pi", "documents", "desktop",
+      "bun", "native-runtime", "codex", "claude", "opencode", "boot", "pi", "acp-agent", "documents", "desktop",
     ]);
     for (const step of steps) {
       expect(step.command.startsWith("set -eu\nexport HOME='/home/user'\n")).toBe(true);
@@ -263,10 +264,12 @@ describe("native image Dockerfile", () => {
       "context/6-pi/package.json",
       "context/6-pi/package-lock.json",
       "context/6-pi.sh",
-      "context/7-documents.sh",
-      "context/8-desktop/useagent-desktop-launch",
-      "context/8-desktop/cdp-relay.mjs",
-      "context/8-desktop.sh",
+      "context/7-acp-agent/requirements.txt",
+      "context/7-acp-agent.sh",
+      "context/8-documents.sh",
+      "context/9-desktop/useagent-desktop-launch",
+      "context/9-desktop/cdp-relay.mjs",
+      "context/9-desktop.sh",
     ]);
     // Every layer on top of the base: the workdir, the staged context, one RUN per step, the cleanup.
     // The base image already carries over a hundred layers; the runtime rejects images past its depth limit.
@@ -290,7 +293,7 @@ describe("native image Dockerfile", () => {
     expect(bun.bytes.toString("utf8").startsWith(
       "set -eu\nmkdir -p '/root/.local/share/useagent/bun/.stage-image' && cp '/tmp/useagent-native-image/0-bun/bun' '/root/.local/share/useagent/bun/.stage-image/bun'\nset -eu\nexport HOME='/root'\n",
     )).toBe(true);
-    const documents = rendered.files.find((file) => file.contextPath === "context/7-documents.sh")!;
+    const documents = rendered.files.find((file) => file.contextPath === "context/8-documents.sh")!;
     expect(documents.bytes.toString("utf8").startsWith("set -eu\nset -eu\nexport HOME='/root'\n")).toBe(true);
     expect(rendered.dockerfile).toContain(`LABEL org.useagent.native-image=${nativeImageName(inputs())}\n`);
   });
@@ -337,12 +340,12 @@ describe("applying the native image to a live sandbox", () => {
     expect(bunUploads.map((upload) => upload.bytes)).toEqual([3 * 1024 * 1024, 5]);
     expect(fake.commands.some((command) => command.includes("cat ") && command.includes("bun.part-0") && command.includes("bun.part-1"))).toBe(true);
     const stepCommands = fake.commands.filter((command) => command.startsWith("set -eu\nexport HOME="));
-    expect(stepCommands).toHaveLength(9);
+    expect(stepCommands).toHaveLength(10);
     expect(fake.uploads.at(-1)!.path).toBe(`/home/user/${SANDBOX_STATE_DIR}/cdp-relay.mjs`);
   });
 
   test("names the failing step", async () => {
-    const fake = fakeTarget({ "apt-get": 100 });
+    const fake = fakeTarget({ "libreoffice-core": 100 });
     await expect(
       applyNativeImage(fake.target, BOX_LAYOUT, inputs(), { signal: new AbortController().signal }),
     ).rejects.toThrow(/^documents failed \(exit 100\)/);

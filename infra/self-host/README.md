@@ -142,3 +142,62 @@ the repository setting. New threads pin the new name; existing threads retain
 their image choice and workspace. Keep older names available while they may be
 needed for replacement. Do not replace a snapshot in place if older threads
 need its original contents.
+
+## Kolega Code
+
+Kolega Code uses its native ACP session inside the thread's sandbox. Model
+requests go through the UseAgent provider gateway, which keeps the upstream API
+key in the control plane. Connect DeepSeek, OpenAI, Anthropic or OpenRouter in
+Settings using an account-specific provider connection; an organization secret
+with the matching provider key name is also supported. The backend environment
+key is a development-only fallback. Do not put any model key in a sandbox image.
+
+Enable the engine with `ENABLED_ENGINES=kolega` (include any other optional
+engines already enabled), configure a sandbox-reachable `GATEWAY_PUBLIC_URL`
+and `PROVIDER_GATEWAY_SECRET`, and set the deployment's release-evidence flags
+`ENGINE_READINESS_KOLEGA=ready` and `PROVIDER_HEALTH_DEEPSEEK=ready` after
+validating that path. Set the matching `PROVIDER_HEALTH_*` flag for each other
+model provider you intend to offer. Select **Kolega Code** and a model in the
+composer; `deepseek/deepseek-flash` selects DeepSeek V4.1 Flash.
+
+The gateway hostname must be reachable from the sandbox, not just from the
+backend. Daytona applies [tier-based outbound restrictions](https://www.daytona.io/docs/en/network-limits/):
+on restricted tiers, a custom gateway hostname may require Daytona support or a
+different tier. Check connectivity from a sandbox before enabling the engine.
+
+The native image recipe installs Kolega Code 0.47.1 into a Python 3.11+
+virtual environment using the hash-locked `backend/acp-runtime/requirements.txt`.
+Rebuild the deployment's native image or Daytona snapshot before enabling the
+engine. For a custom root-based snapshot, install that same lock at
+`/opt/useagent/acp-agent`:
+
+```sh
+python3 -m venv /opt/useagent/acp-agent
+/opt/useagent/acp-agent/bin/pip install --only-binary=:all: --require-hashes -r requirements.txt
+/opt/useagent/acp-agent/bin/kolega-code --version
+```
+
+Copy `requirements.txt` from `backend/acp-runtime/` into the build context; do
+not copy an environment file. A non-root local image uses
+`$HOME/.useagent/acp-agent` instead. The image build requires Python's `venv`
+module. A repository snapshot must also contain the normal UseAgent runtime and
+this pinned agent installation. Missing or mismatched installations fail with an
+installation diagnostic instead of downloading an unpinned package on each run.
+
+Native ACP sessions and their journals stay in each thread sandbox. An intact
+sandbox can load the native session on a later turn; losing the sandbox does not
+restore that native session or its files. An interrupted in-flight turn cannot
+currently be reconstructed. Permission requests use the existing approval card;
+the composer's Plan option selects Plan mode and declines commands and writes;
+Manual selects Build mode and asks for native permissions. More permissive
+automatic approval modes are not offered for this engine. ACP output that cannot be represented by the
+shared event vocabulary is not projected as a separate UI protocol.
+
+For a paid local model/protocol smoke test, set `KOLEGA_CODE_BINARY` to a local
+0.47.1 executable and provide `DEEPSEEK_API_KEY` to the trusted backend shell,
+then run `bun test/manual/acp-live-proxy-smoke.ts` from `backend/`. The script
+runs in a temporary directory and passes only a dummy broker credential to the
+agent. The separate `bun test/manual/acp-daytona-smoke.ts` requires a Daytona
+key and creates a billable, temporary sandbox; it uses a synthetic model and
+deletes its sandbox afterward. Neither smoke test proves a signed-in full-stack
+production deployment.

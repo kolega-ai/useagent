@@ -754,15 +754,15 @@ export function translateOpenCode(
           ...(typeof parsed.resumed === "boolean" ? { resumed: parsed.resumed } : {}),
         }, ident));
       } else suppressed = "session.started without a capabilities map";
-    } else if (et === "pi.turn.started") {
+    } else if ((et === "pi.turn.started" || et === "kolega.turn.started")) {
       produced.push(push(f.eventId, f.provider, { kind: "turn.started" }, ident));
-    } else if (et === "pi.turn.completed") {
+    } else if ((et === "pi.turn.completed" || et === "kolega.turn.completed")) {
       const stopReason = str(p?.stopReason);
       produced.push(push(f.eventId, f.provider, {
         kind: "turn.completed",
         ...(stopReason ? { stopReason } : {}),
       }, ident));
-    } else if (et === "pi.turn.failed") {
+    } else if ((et === "pi.turn.failed" || et === "kolega.turn.failed")) {
       produced.push(push(f.eventId, f.provider, {
         kind: "harness.error",
         message: str(p?.error) ?? "Pi turn failed",
