@@ -99,6 +99,9 @@ rejected. The deployment still needs its default `SANDBOX_IMAGE_REF` and
 used for repository images must be reachable by the runner.
 Repository-specific Cube templates do not use the default warm pool. Ensure all
 custom images include the native runtime and pinned agent installation.
+For Box and local images, use the provider's non-root workspace layout:
+`/home/user/work` must be writable by `user`, and a prepared checkout belongs at
+`/home/user/work/OWNER/REPO` with the clean GitHub origin.
 
 ### Preparing a Daytona repository snapshot
 
@@ -208,6 +211,12 @@ the composer's Plan option selects Plan mode and declines commands and writes;
 Manual selects Build mode and asks for native permissions. More permissive
 automatic approval modes are not offered for this engine. ACP output that cannot be represented by the
 shared event vocabulary is not projected as a separate UI protocol.
+
+Kolega's ACP usage updates report context use rather than billed model usage.
+UseAgent therefore cannot currently charge these calls to its spend ledger or
+enforce its member spend allowance for them. The displayed spend can remain
+zero even when the provider charges for requests. Set limits with the model
+provider and monitor its billing before enabling this engine.
 
 For a paid local model/protocol smoke test, set `KOLEGA_CODE_BINARY` to a local
 0.47.1 executable and provide `DEEPSEEK_API_KEY` to the trusted backend shell,

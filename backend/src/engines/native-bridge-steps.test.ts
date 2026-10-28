@@ -103,6 +103,17 @@ function fakeCtx() {
 const redact = createSecretRedactor([]);
 
 describe("native bridge step projection", () => {
+  test("a completed file update enriches the original step without losing its input or exposing secrets", async () => {
+    const { ctx, steps } = fakeCtx();
+    const secret = "sk-live-secret-value-0123456789";
+    const projector = createNativeBridgeStepProjector(ctx, createSecretRedactor([secret]));
+    projector.observe({ kind: "tool.started", toolCallId: "edit-1", name: "edit", input: { original: "kept" } });
+    projector.observe({ kind: "tool.completed", toolCallId: "edit-1", status: "ok", input: { file_path: "/work/README.md", old_string: "before", new_string: `after ${secret}` } });
+    await projector.drain();
+    expect(steps[0]!.step.kind).toBe("file");
+    expect(steps[0]!.code).toMatchObject({ input: { original: "kept", file_path: "/work/README.md", old_string: "before", new_string: "after <redacted>" }, error: false });
+    expect(JSON.stringify(steps[0]!.code)).not.toContain(secret);
+  });
   test("a recorded Pi run projects file and command rows with their output", async () => {
     const { ctx, steps } = fakeCtx();
     const projector = createNativeBridgeStepProjector(ctx, redact);
