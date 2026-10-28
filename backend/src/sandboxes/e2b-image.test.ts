@@ -11,5 +11,7 @@ test("the E2B build installs the backend's pinned Node before native runtime set
   expect(command.indexOf("sha256sum -c")).toBeLessThan(command.indexOf("tar -x"));
   expect(command.indexOf("rm -rf /usr/local/lib/node_modules/npm")).toBeLessThan(command.indexOf("tar -x"));
   expect(command).toContain("/usr/local/bin/npm --version");
+  expect(command).toContain("acl util-linux");
+  expect(command).toContain("install -d -m 755 /root/work");
   expect(command).toContain("Unsupported architecture");
 });

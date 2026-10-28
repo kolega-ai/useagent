@@ -171,16 +171,19 @@ native agent runs. The E2B credential stays on the control plane. The gateway
 at `GATEWAY_PUBLIC_URL` must be reachable over HTTPS from E2B sandboxes.
 
 Build a native template once from E2B's `base` template, using the staged
-runtime assets and the same pinned agent recipe as the other providers. Run
-this from the repository root after installing backend dependencies and
-staging the native runtime (`bun run deploy/stage-native-runtime.ts`):
+runtime assets and the same pinned agent recipe as the other providers. Build
+the Linux backend image first so the baker uses Linux dependencies and the
+staged runtime assets, even when the host is macOS:
 
 ```sh
 # Export E2B_API_KEY, GATEWAY_PUBLIC_URL and PROVIDER_GATEWAY_SECRET locally.
 # The template memory must meet SANDBOX_MEMORY_GIB.
+bun run deploy/stage-native-runtime.ts
+docker build --platform linux/amd64 -f Dockerfile.backend \
+  --build-arg RELEASE_COMMIT="$(git rev-parse HEAD)" -t useagent-backend:local .
 docker run --rm --platform linux/amd64 \
   -e E2B_API_KEY -e GATEWAY_PUBLIC_URL -e PROVIDER_GATEWAY_SECRET \
-  -v "$PWD:/repo" -w /repo/backend oven/bun:1.3.14 \
+  useagent-backend:local \
   bun run scripts/bake-e2b-template.ts --name useagent-runtime-v1 --cpu 2 --memory-mb 8192
 ```
 
