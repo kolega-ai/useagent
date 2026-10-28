@@ -1,7 +1,31 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ensureRepoClone } from "../engines/repo-prep";
+import { archiveGitLabCheckout } from "./checkout";
 
 describe("GitLab checkout staging", () => {
+  test("does not add macOS extended-attribute files to the checkout archive", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "useagent-gitlab-archive-test-"));
+    try {
+      const checkout = join(directory, "checkout");
+      await mkdir(join(checkout, ".git"), { recursive: true });
+      const file = join(checkout, "readme.txt");
+      await writeFile(file, "fixture\n");
+      if (process.platform === "darwin") {
+        const attr = Bun.spawn(["xattr", "-w", "com.apple.metadata:test", "fixture", file]);
+        expect(await attr.exited).toBe(0);
+      }
+      await archiveGitLabCheckout(directory, new AbortController().signal);
+      const list = Bun.spawn(["tar", "-tzf", join(directory, "project.tar.gz")], { stdout: "pipe" });
+      const names = (await new Response(list.stdout).text()).split("\n");
+      expect(await list.exited).toBe(0);
+      expect(names).toContain("./readme.txt");
+      expect(names.some((name) => name.split("/").some((part) => part.startsWith("._")))).toBe(false);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
   test("uses the staged archive without a credential and cleans it after placement", async () => {
     const commands: { command: string; env?: Record<string, string> }[] = [];
     let cleaned = false;

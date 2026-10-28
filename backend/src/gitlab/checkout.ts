@@ -41,6 +41,27 @@ async function runGit(args: string[], options: { directory: string; token: strin
   }
 }
 
+/** Archive a checkout without copying host-specific extended attributes. */
+export async function archiveGitLabCheckout(directory: string, signal: AbortSignal): Promise<Buffer> {
+  const archive = join(directory, "project.tar.gz");
+  const child = Bun.spawn(["tar", "-czf", archive, "-C", "checkout", "."], {
+    cwd: directory, stdin: "ignore", stdout: "ignore", stderr: "ignore",
+    // On macOS bsdtar otherwise turns extended attributes into untracked ._* files.
+    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", COPYFILE_DISABLE: "1" },
+  });
+  const abort = () => child.kill("SIGKILL");
+  signal.addEventListener("abort", abort, { once: true });
+  if (signal.aborted) abort();
+  const timeout = setTimeout(abort, GIT_TIMEOUT_MS);
+  try {
+    const status = await child.exited;
+    signal.throwIfAborted();
+    if (status !== 0) throw new Error("Could not prepare the GitLab checkout archive");
+  } finally { clearTimeout(timeout); signal.removeEventListener("abort", abort); }
+  if ((await stat(archive)).size > MAX_ARCHIVE_BYTES) throw new Error("GitLab checkout exceeds the 128 MiB transfer limit");
+  return await readFile(archive);
+}
+
 /** Exported for an opt-in live test; callers must have authorized the project. */
 export async function createGitLabArchive(input: {
   repository: string; branch: string | null; token: string; signal: AbortSignal;
@@ -60,22 +81,7 @@ export async function createGitLabArchive(input: {
     // A bundle of a shallow clone lacks the parents of its boundary commit,
     // so an empty receiver cannot clone it. Preserve .git/shallow together
     // with the actual checkout; its origin contains no credential.
-    const archive = join(directory, "project.tar.gz");
-    const child = Bun.spawn(["tar", "-czf", archive, "-C", "checkout", "."], {
-      cwd: directory, stdin: "ignore", stdout: "ignore", stderr: "ignore",
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-    });
-    const abort = () => child.kill("SIGKILL");
-    input.signal.addEventListener("abort", abort, { once: true });
-    if (input.signal.aborted) abort();
-    const timeout = setTimeout(abort, GIT_TIMEOUT_MS);
-    try {
-      const status = await child.exited;
-      input.signal.throwIfAborted();
-      if (status !== 0) throw new Error("Could not prepare the GitLab checkout archive");
-    } finally { clearTimeout(timeout); input.signal.removeEventListener("abort", abort); }
-    if ((await stat(archive)).size > MAX_ARCHIVE_BYTES) throw new Error("GitLab checkout exceeds the 128 MiB transfer limit");
-    return await readFile(archive);
+    return await archiveGitLabCheckout(directory, input.signal);
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
