@@ -95,6 +95,9 @@ describe("repository snapshots", () => {
       const path = `/api/projects/${project.body.id}`;
       const denied = await json<Project>(path, { method: "PATCH", cookies: member.cookies, body: { daytona_snapshot: "unauthorized" } });
       expect(denied.status).toBe(404);
+      for (const body of [{ cube_snapshot: "unauthorized" }, { box_snapshot: "unauthorized" }, { local_image: `registry.example/repo@sha256:${"b".repeat(64)}` }]) {
+        expect((await json<Project>(path, { method: "PATCH", cookies: member.cookies, body })).status).toBe(404);
+      }
       const allowed = await json<Project>(path, { method: "PATCH", cookies: owner.cookies, body: { daytona_snapshot: "approved-image" } });
       expect(allowed.status).toBe(200);
       expect(allowed.body.daytona_snapshot).toBe("approved-image");
