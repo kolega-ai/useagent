@@ -171,6 +171,13 @@ describe("Automations API client", () => {
     ]);
   });
 
+  test("does not claim a repository action was saved when an older backend ignored it", async () => {
+    responses.push(Response.json(automation));
+    await expect(createSchedule({ name: automation.name, cron: automation.cron, prompt: automation.prompt, engine: automation.engine,
+      repos: ["owner/repo"], codePolicy: { version: 1, mode: "publish", repository: "owner/repo", draft: true, allowSandboxActions: false } }))
+      .rejects.toThrow("backend did not confirm the repository action");
+  });
+
   test("updates an Automation through its canonical item endpoint", async () => {
     responses.push(Response.json({ ...automation, enabled: true }));
 

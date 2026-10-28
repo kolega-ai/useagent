@@ -41,6 +41,7 @@ export class AcpApprovals {
     readonly permission: AcpPermission;
     readonly permissionMode: PermissionMode;
     readonly redact: Pick<SecretRedactor, "text">;
+    readonly authorizeAutomation?: (runId: string, threadId: string) => Promise<boolean>;
   }): Promise<string | null> {
     const requestKind = approvalKind(input.permission.toolCall);
     const tool = input.permission.toolCall as { title?: unknown } | null;
@@ -63,6 +64,29 @@ export class AcpApprovals {
     } catch (error) {
       this.pending.delete(request.id);
       throw error;
+    }
+    const allowOnce = input.permission.options.find((option) => option.kind === "allow_once");
+    const autoAllowed = allowOnce && requestKind !== "other" && input.authorizeAutomation
+      ? await input.authorizeAutomation(input.runId, input.threadId).catch(() => false) : false;
+    const pending = this.pending.get(request.id);
+    if (autoAllowed && allowOnce && pending && !pending.claimed) {
+      pending.claimed = true;
+      try {
+        await this.ledger.record({ id: approvalEventId(input.runId, request.id, "responding"), runId: input.runId,
+          threadId: input.threadId, provider: "kolega", eventType: "approval.responding", nativeSessionId: input.sessionId,
+          payload: { requestId: request.id, decision: "accept", source: "automation_policy" } }, { critical: true, required: true });
+      } catch (error) {
+        if (this.pending.get(request.id) === pending) this.pending.delete(request.id);
+        throw error;
+      }
+      if (this.pending.get(request.id) === pending) {
+        pending.resolve(allowOnce.optionId);
+        void pending.sent.then(() => this.ledger.record({ id: approvalEventId(input.runId, request.id, "responded"),
+          runId: input.runId, threadId: input.threadId, provider: "kolega", eventType: "approval.responded",
+          nativeSessionId: input.sessionId, payload: { requestId: request.id, decision: "accept", source: "automation_policy" } },
+          { critical: true, required: true })).catch(() => { console.error("[automation-code] approval receipt could not be recorded"); })
+          .finally(() => { if (this.pending.get(request.id) === pending) this.pending.delete(request.id); });
+      }
     }
     return await result.promise;
   }

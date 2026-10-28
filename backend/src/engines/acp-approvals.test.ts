@@ -44,3 +44,45 @@ test("session cancellation rejects a pending native approval", async () => {
   approvals.cancelSession("native");
   expect(await answer).toBeNull();
 });
+
+test("an explicitly authorized automation records its approval before allowing the command", async () => {
+  const events: Array<{ eventType: string; payload?: unknown }> = [];
+  const receipt = Promise.withResolvers<void>();
+  const approvals = new AcpApprovals({
+    record: (async (event: typeof events[number]) => { events.push(event); if (event.eventType === "approval.responded") receipt.resolve(); }) as never,
+    exists: (async () => false) as never,
+  });
+  expect(await approvals.request({ ...identity, permission, redact, authorizeAutomation: async (run, thread) =>
+    run === identity.runId && thread === identity.threadId })).toBe("yes");
+  expect(events.map((event) => event.eventType)).toEqual(["approval.requested", "approval.responding"]);
+  expect(events[1]?.payload).toMatchObject({ decision: "accept", source: "automation_policy" });
+  approvals.acknowledge(permission);
+  await receipt.promise;
+  expect(events[2]?.payload).toMatchObject({ decision: "accept", source: "automation_policy" });
+});
+
+test("a revoked automation, unknown permission, or missing allow-once option still needs a human", async () => {
+  for (const item of [
+    { permission, authorizeAutomation: async () => false },
+    { permission: { ...permission, toolCall: { kind: "other" } }, authorizeAutomation: async () => true },
+    { permission: { ...permission, options: [{ optionId: "no", kind: "reject_once" as const, name: "Reject" }] }, authorizeAutomation: async () => true },
+  ]) {
+    const requested = Promise.withResolvers<void>();
+    const events: string[] = [];
+    const approvals = new AcpApprovals({ record: (async (event: { eventType: string }) => {
+      events.push(event.eventType); requested.resolve();
+    }) as never, exists: (async () => false) as never });
+    const answer = approvals.request({ ...identity, ...item, redact });
+    await requested.promise;
+    approvals.cancelSession(identity.sessionId);
+    expect(await answer).toBeNull();
+    expect(events).toEqual(["approval.requested"]);
+  }
+});
+
+test("an automation never allows a command if its approval intent cannot be recorded", async () => {
+  const approvals = new AcpApprovals({ record: (async (event: { eventType: string }) => {
+    if (event.eventType === "approval.responding") throw new Error("ledger unavailable");
+  }) as never, exists: (async () => false) as never });
+  await expect(approvals.request({ ...identity, permission, redact, authorizeAutomation: async () => true })).rejects.toThrow("ledger unavailable");
+});

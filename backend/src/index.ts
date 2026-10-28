@@ -60,6 +60,7 @@ import { schedulesRoutes } from "./schedules/routes";
 import { startScheduler } from "./schedules/scheduler";
 import { startCaptureDelivery } from "./memory/capture-outbox";
 import { resetStuckLearning, startLearningOutbox } from "./learning/learning-outbox";
+import { resetStuckCodeActions, startCodeActions } from "./schedules/code-actions-worker";
 import { sandboxProvider, sandboxProviderApiKey, sandboxProviderKind } from "./sandboxes/provider";
 import { userComputersEnabled } from "./sandboxes/binding";
 import { operatorRoutes } from "./operator/routes";
@@ -271,6 +272,9 @@ if (canonReset > 0)
 const learningReset = await resetStuckLearning();
 if (learningReset > 0)
   console.log(`[boot] learning recovery — ${learningReset} stuck rows re-armed`);
+
+const codeActionsReset = await resetStuckCodeActions();
+if (codeActionsReset > 0) console.log(`[boot] code action recovery — ${codeActionsReset} stuck rows re-armed`);
 
 const app = new Hono<AppEnv>();
 
@@ -624,6 +628,7 @@ startCanonicalizationOutbox();
 // never fails an already-completed run. The verified-outcome gate (6.4) runs at
 // build time, so an unverified completion is a clean skip, not a candidate.
 startLearningOutbox();
+startCodeActions();
 
 // Adaptive post-boot reconciler (#63, 15s tick). Re-probes runs PARKED by boot
 // recovery (native session may still be finishing after a fast restart): adopts

@@ -1,6 +1,6 @@
 import { backendFetch } from "@/lib/backend-fetch";
 import { envelope } from "@/lib/runs";
-import type { FiringRecord, ScheduleRecord } from "./schedules-data";
+import type { AutomationCodePolicy, FiringRecord, ScheduleRecord } from "./schedules-data";
 
 /**
  * Thin fetch layer for the Automations endpoints. Routing (backend origin +
@@ -21,6 +21,16 @@ async function failure(res: Response, call: string): Promise<Error> {
   return typeof body?.message === "string" ? new AutomationRefusal(body.message) : new Error(`${call} ${res.status}`);
 }
 
+function verifyCodePolicy(saved: ScheduleRecord, requested: AutomationCodePolicy | null | undefined, requireSupport: boolean): void {
+  if (requested === undefined || (requested === null && !requireSupport)) return;
+  const actual = saved.code_policy;
+  if (actual === undefined || (requested === null ? actual !== null :
+    !actual || actual.version !== requested.version || actual.mode !== requested.mode || actual.repository !== requested.repository ||
+      actual.draft !== requested.draft || actual.allowSandboxActions !== requested.allowSandboxActions)) {
+    throw new AutomationRefusal("The backend did not confirm the repository action. Refresh after the backend is updated and check this automation before running it.");
+  }
+}
+
 export async function fetchSchedules(signal?: AbortSignal): Promise<ScheduleRecord[]> {
   const res = await backendFetch("/api/automations", { cache: "no-store", signal });
   if (!res.ok) throw new Error(`automations ${res.status}`);
@@ -34,6 +44,9 @@ export interface CreateScheduleInput {
   timezone?: string | null;
   prompt: string;
   engine: string;
+  model?: string;
+  repos?: string[];
+  codePolicy?: AutomationCodePolicy | null;
 }
 
 export async function createSchedule(
@@ -48,7 +61,9 @@ export async function createSchedule(
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.error ?? `create automation ${res.status}`);
   }
-  return (await res.json()) as ScheduleRecord;
+  const saved = (await res.json()) as ScheduleRecord;
+  verifyCodePolicy(saved, input.codePolicy, false);
+  return saved;
 }
 
 export type SchedulePatch = Partial<CreateScheduleInput> & { enabled?: boolean };
@@ -63,7 +78,9 @@ export async function updateSchedule(
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw await failure(res, "update automation");
-  return (await res.json()) as ScheduleRecord;
+  const saved = (await res.json()) as ScheduleRecord;
+  verifyCodePolicy(saved, patch.codePolicy, true);
+  return saved;
 }
 
 /** Manual fire — returns the new run id. */

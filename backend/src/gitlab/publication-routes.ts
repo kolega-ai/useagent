@@ -6,25 +6,18 @@ import { createHash } from "node:crypto";
 import { artifactStorage } from "../artifacts/storage";
 import { db } from "../db/client";
 import { githubChangeSets } from "../db/schema";
-import { betterAuthTrustedOrigins } from "../env";
+import { hasTrustedOrigin } from "../security/trusted-origin";
 import { getGitHubChangeSetForOrg, getGitHubPublicationReceiptForChangeSet } from "../github/publication-repo";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import { getRunForOrg } from "../runs/repo";
 import { prepareGitLabPublication } from "./publication-prepare";
 import { publishGitLabChangeSet } from "./publication-publish";
-import { MAX_PATCH_BYTES } from "./publication-capture";
+import { MAX_PATCH_BYTES } from "../repositories/capture-patch";
 import { GitLabApiError } from "./client";
 
 export const gitlabPublicationRoutes = new Hono<AppEnv>();
 gitlabPublicationRoutes.use("*", orgScope);
-
-function trustedOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return false;
-  try { return betterAuthTrustedOrigins().includes(new URL(origin).origin); }
-  catch { return false; }
-}
 
 // Never return arbitrary infrastructure, database or network exceptions to the browser.
 const publicErrors = new Set([
@@ -33,8 +26,9 @@ const publicErrors = new Set([
   "This project is not bound to the thread.", "GitLab is not connected for this organization",
   "The GitLab target branch is unavailable.", "GitLab returned an invalid target branch.",
   "Could not capture changes. Check that the repository has changes and its target branch has not moved since checkout.",
+  "The repository has no changes to publish.",
   "Changes exceed the 25 MiB publication limit.", "The captured changes could not be read safely.",
-  "The GitLab target branch moved. Refresh the workspace before publishing.",
+  "The target branch moved. Refresh the workspace before publishing.",
   "A publication must contain between 1 and 200 files.", "The changes contain an unsupported path or file type.",
   "The changes contain an unsupported file mode.", "The changes exceed the publication file-size limit.",
   "The staged file could not be verified.", "The thread started another turn. Prepare the changes again after it finishes.",
@@ -86,7 +80,7 @@ gitlabPublicationRoutes.get("/latest/:runId", async (c) => {
 });
 
 gitlabPublicationRoutes.post("/prepare", bodyLimit({ maxSize: 4096 }), async (c) => {
-  if (!trustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
+  if (!hasTrustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
   const userId = c.get("userId");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
   let body: { runId?: unknown; repository?: unknown; title?: unknown; draft?: unknown };
@@ -125,7 +119,7 @@ gitlabPublicationRoutes.get("/:id", async (c) => {
 });
 
 gitlabPublicationRoutes.post("/:id/publish", bodyLimit({ maxSize: 4096 }), async (c) => {
-  if (!trustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
+  if (!hasTrustedOrigin(c.req.raw)) return c.json({ error: "Invalid request origin." }, 403);
   const userId = c.get("userId");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
   let body: { approved?: unknown };

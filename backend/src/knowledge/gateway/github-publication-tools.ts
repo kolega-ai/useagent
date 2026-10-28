@@ -118,6 +118,8 @@ export const GITHUB_PUBLICATION_TOOL_NAMES = new Set(
 );
 
 export interface PublicationToolDependencies {
+  /** Additional trusted caller authority, rechecked before each provider write. */
+  readonly authorizeEffect?: () => Promise<void>;
   readonly getRun: typeof getRunForOrg;
   readonly resolveToken: typeof resolveGithubPublicationToken;
   readonly fetch: PublicationFetch;
@@ -691,6 +693,7 @@ async function publish(
         resolveToken: (repository) => deps.resolveToken(repository, claims.orgId),
         fetch: deps.fetch,
         assertLease: async () => {
+          await deps.authorizeEffect?.();
           if (!(await deps.renewClaim({
             orgId: claims.orgId,
             receiptId: claim.receipt.id,
@@ -784,3 +787,8 @@ export function createGithubPublicationToolExecutor(
 }
 
 export const executeGithubPublicationToolLocal = createGithubPublicationToolExecutor();
+
+/** Trusted automation worker entry: its repository policy is rechecked at every write. */
+export function createAutomationGithubPublicationExecutor(authorizeEffect: () => Promise<void>) {
+  return createGithubPublicationToolExecutor({ ...productionDependencies, authorizeEffect });
+}

@@ -30,6 +30,9 @@ import { acceptExistingThreadFollowup } from "../runs/thread-followups";
 import type { MemoryScope } from "../memory/scope";
 import { getRunForOrg } from "../runs/repo";
 import { AUTOMATION_RUN_ORIGIN } from "../runs/origin";
+import { attachCodeAction, selectCodeAction } from "./code-actions-repo";
+import { codeActionPrompt } from "./code-result";
+import { permissionModeSupported } from "../engines/permission-mode";
 
 /**
  * Deterministic per-occurrence idempotency key. A cron firing keys on the MINUTE
@@ -95,6 +98,18 @@ export async function fireScheduleWithOutcome(
     { requireContentHash: true },
   );
   const idempotencyKey = firingKey(schedule.id, trigger, occurrence);
+  const selectionController = new AbortController();
+  const selectionTimer = setTimeout(() => selectionController.abort(), 45_000);
+  let codeAction: Awaited<ReturnType<typeof selectCodeAction>>;
+  try { codeAction = await selectCodeAction(schedule, idempotencyKey, selectionController.signal); }
+  finally { clearTimeout(selectionTimer); }
+  const effectivePrompt = codeAction ? schedule.prompt + codeActionPrompt(codeAction.policy, codeAction.target) : schedule.prompt;
+  const automationPermission = codeAction
+    ? codeAction.policy.allowSandboxActions && permissionModeSupported(schedule.engine, "full-access") ? "full-access" as const
+      : permissionModeSupported(schedule.engine, "approval-required") ? "approval-required" as const
+      : null
+    : undefined;
+  if (codeAction && !automationPermission) throw new Error("This agent cannot honor the automation's sandbox permission setting.");
   const runId = crypto.randomUUID();
   // A bot routine targets the bot's home thread; a deleted/archived bot falls
   // back to a plain root so the schedule keeps working instead of failing.
@@ -182,6 +197,12 @@ export async function fireScheduleWithOutcome(
   if (!outcome) {
     // A first occurrence still resolves immediately before persistence. Removed
     // access or an unavailable provider fails before a run/firing is created.
+    const review = codeAction?.target;
+    const selectedRepos = review?.provider === "gitlab"
+      ? [`${codeAction!.policy.repository}:${review.sourceBranch}`] : schedule.repos;
+    const explicit = [...explicitRepositoryResources(selectedRepos)];
+    if (review?.provider === "github") explicit.push({ kind: "code.change", provider: "github",
+      locator: { type: "github.pull_request", repository: review.repository, number: review.number, revision: null } });
     const intake = await resolveRunIntake(
       home
         ? {
@@ -195,10 +216,14 @@ export async function fireScheduleWithOutcome(
         : {
             source: "automation",
             text: schedule.prompt,
-            explicitResources: explicitRepositoryResources(schedule.repos),
+            explicitResources: explicit,
           },
       { authorize: createRunResourceAuthorization(schedule.orgId) },
     );
+    if (review?.provider === "github" && !intake.resources.some((resource) => resource.locator.type === "github.pull_request" &&
+      resource.locator.number === review.number && resource.locator.revision === review.headSha)) {
+      throw new Error("The selected pull request changed before the review started.");
+    }
     const command = {
       idempotencyKey,
       orgId: schedule.orgId,
@@ -207,13 +232,14 @@ export async function fireScheduleWithOutcome(
       intent,
       run: {
         id: runId,
-        prompt: schedule.prompt,
+        prompt: effectivePrompt,
         model: schedule.model,
         engine: schedule.engine,
         parentRunId: home?.id ?? null,
         threadId,
         repos: [...intake.repos],
         resolvedResources: intake.resources,
+        ...(automationPermission ? { permissionMode: automationPermission } : {}),
         // Plain scheduled runs are fresh roots with organization memory; a bot
         // routine inherits the bot's scope.
         memoryScope,
@@ -374,6 +400,7 @@ export async function fireScheduleWithOutcome(
     trigger,
     idempotencyKey,
   });
+  if (codeAction) await attachCodeAction(idempotencyKey, acceptedRunId);
 
   // Fire notification (notifications.slack): durably enqueue "automation fired"
   // to the configured channel through the existing Slack outbox. Keyed by the

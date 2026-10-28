@@ -5,10 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/base/buttons/button";
 import { HintText } from "@/components/base/input/hint-text";
 import { Input } from "@/components/base/input/input";
+import { Checkbox } from "@/components/base/checkbox/checkbox";
 import * as Modal from "@/components/base/modal/modal";
 import { Select, SelectItem } from "@/components/base/select/select";
 import * as Textarea from "@/components/base/textarea/textarea";
-import { useEnabledEngines } from "@/components/chat/engine-picker";
+import { useEnabledEngineConfig } from "@/components/chat/engine-picker";
+import { modelLabel, type EngineId } from "@/components/chat/types";
+import { loadRepoList } from "@/lib/repo-list";
+import { RepoMultiPicker, type RepoItem } from "@/app/(workspace)/agent/new/repo-multi-picker";
 import { cx } from "@/utils/cx";
 import type { CreateScheduleInput } from "./schedules-api";
 import {
@@ -48,12 +52,18 @@ export function AutomationEditorModal({
   const [prompt, setPrompt] = useState("");
   const [cron, setCron] = useState<string>(CADENCE_PRESETS[2].cron);
   const [timezone, setTimezone] = useState(localZone);
-  const enabledEngines = useEnabledEngines();
+  const { engines: enabledEngines, models, runtimes } = useEnabledEngineConfig();
   const engineOptions = useMemo(
     () => automationEditorEngineOptions(enabledEngines, schedule?.engine),
     [enabledEngines, schedule?.engine],
   );
   const [engine, setEngine] = useState("");
+  const [model, setModel] = useState("");
+  const [codeMode, setCodeMode] = useState<"none" | "publish" | "review">("none");
+  const [codeRepo, setCodeRepo] = useState("");
+  const [codeDraft, setCodeDraft] = useState(true);
+  const [allowSandboxActions, setAllowSandboxActions] = useState(false);
+  const [repos, setRepos] = useState<RepoItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,9 +74,24 @@ export function AutomationEditorModal({
     setCron(schedule?.cron ?? CADENCE_PRESETS[2].cron);
     setTimezone(schedule ? (schedule.timezone ?? "") : localZone());
     setEngine(schedule?.engine ?? "");
+    setModel(schedule?.model ?? "");
+    setCodeMode(schedule?.code_policy?.mode ?? "none");
+    setCodeRepo(schedule?.code_policy?.repository ?? "");
+    setCodeDraft(schedule?.code_policy?.draft ?? true);
+    setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? false);
     setBusy(false);
     setError(null);
   }, [open, schedule]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void loadRepoList().then((items) => {
+      if (!cancelled) setRepos(items.map((item) => ({ full_name: item.full_name, name: item.name ?? item.full_name.split("/").at(-1) ?? item.full_name,
+        default_branch: item.default_branch ?? "main", private: item.private })));
+    }).catch(() => { if (!cancelled) setRepos([]); });
+    return () => { cancelled = true; };
+  }, [open]);
 
   useEffect(() => {
     if (!open || schedule) return;
@@ -74,7 +99,8 @@ export function AutomationEditorModal({
   }, [engineOptions, open, schedule]);
 
   const cronValid = looksLikeCron(cron);
-  const canSubmit = Boolean(name.trim() && prompt.trim() && engine && cronValid && !busy);
+  const needsSandboxAgent = codeMode !== "none" && runtimes[engine as EngineId]?.kind === "direct";
+  const canSubmit = Boolean(name.trim() && prompt.trim() && engine && cronValid && !busy && !needsSandboxAgent && (codeMode === "none" || codeRepo));
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -87,6 +113,11 @@ export function AutomationEditorModal({
         cron: cron.trim(),
         timezone: timezone.trim() || null,
         engine,
+        ...(model ? { model } : {}),
+        ...(codeMode === "none" ? { codePolicy: null } : {
+          repos: [codeRepo],
+          codePolicy: { version: 1, mode: codeMode, repository: codeRepo, draft: codeDraft, allowSandboxActions },
+        }),
       });
       onClose();
     } catch (cause) {
@@ -185,7 +216,7 @@ export function AutomationEditorModal({
             <Select
               aria-labelledby="automation-agent-label"
               selectedKey={engine || null}
-              onSelectionChange={(key) => setEngine(String(key))}
+              onSelectionChange={(key) => { const next = String(key) as EngineId; setEngine(next); setModel(schedule ? (models[next]?.[0] ?? "") : ""); }}
             >
               {engineOptions.map(({ id, label }) => (
                 <SelectItem key={id} id={id}>
@@ -193,6 +224,34 @@ export function AutomationEditorModal({
                 </SelectItem>
               ))}
             </Select>
+          </div>
+
+          {(models[engine as EngineId]?.length ?? 0) > 0 ? <div className="flex flex-col gap-1.5">
+            <span id="automation-model-label" className="text-body-2-medium text-text-primary">Model</span>
+            <Select aria-labelledby="automation-model-label" selectedKey={model || null} onSelectionChange={(key) => setModel(String(key))}>
+              {(models[engine as EngineId] ?? []).map((item) => <SelectItem key={item} id={item}>{modelLabel(item, engine as EngineId)}</SelectItem>)}
+            </Select>
+            <HintText>Leave empty to use the agent's default model.</HintText>
+          </div> : null}
+
+          <div className="flex flex-col gap-2">
+            <span id="automation-code-label" className="text-body-2-medium text-text-primary">Repository actions</span>
+            <Select aria-labelledby="automation-code-label" selectedKey={codeMode} onSelectionChange={(key) => setCodeMode(String(key) as "none" | "publish" | "review")}>
+              <SelectItem id="none">No automatic code actions</SelectItem>
+              <SelectItem id="publish">Open a pull or merge request</SelectItem>
+              <SelectItem id="review">Review and merge changes</SelectItem>
+            </Select>
+            {codeMode !== "none" ? <>
+              {needsSandboxAgent ? <HintText isInvalid>Choose a coding agent that runs in a sandbox.</HintText> : null}
+              <RepoMultiPicker repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose repository"
+                onChange={(items) => setCodeRepo(items.at(-1) ?? "")}
+                onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
+              {codeRepo ? <p className="break-all text-caption-1-regular text-text-secondary">{codeRepo}</p> : null}
+              {codeMode === "publish" ? <Checkbox size="sm" isSelected={codeDraft} onChange={setCodeDraft}>Open as draft</Checkbox> :
+                <HintText>Reviews one open request per run and merges only the approved revision when the provider permits it.</HintText>}
+              <Checkbox size="sm" isSelected={allowSandboxActions} onChange={setAllowSandboxActions}>Allow sandbox commands and file changes without asking</Checkbox>
+              <HintText>This setting authorizes the selected repository action without a separate approval for each request.</HintText>
+            </> : null}
           </div>
 
           {error && (

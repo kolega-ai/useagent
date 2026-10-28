@@ -3,9 +3,36 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureRepoClone } from "../engines/repo-prep";
-import { archiveGitLabCheckout } from "./checkout";
+import { archiveGitLabCheckout, prepareGitLabReviewHistory } from "./checkout";
 
 describe("GitLab checkout staging", () => {
+  test("a shallow review checkout contains both sides of the selected change", async () => {
+    const root = await mkdtemp(join(tmpdir(), "useagent-review-history-"));
+    const run = (args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+      if (result.exitCode !== 0) throw new Error(`Fixture git failed: ${args[0]}`);
+      return result.stdout.toString().trim();
+    };
+    try {
+      run(["init", "-q", "--initial-branch=main", "seed"]);
+      await writeFile(join(root, "seed", "file.txt"), "base\n");
+      run(["-C", "seed", "add", "."]);
+      run(["-C", "seed", "-c", "user.name=Fixture", "-c", "user.email=test@example.invalid", "commit", "-qm", "base"]);
+      run(["-C", "seed", "checkout", "-qb", "topic"]);
+      await writeFile(join(root, "seed", "file.txt"), "changed\n");
+      run(["-C", "seed", "-c", "user.name=Fixture", "-c", "user.email=test@example.invalid", "commit", "-qam", "change"]);
+      const headSha = run(["-C", "seed", "rev-parse", "HEAD"]);
+      run(["clone", "-q", "--depth=1", "--single-branch", "--branch", "topic", `file://${root}/seed`, "review"]);
+      const directory = join(root, "review");
+      const git = async (args: string[]) => Buffer.from(run(args));
+      const review = { provider: "gitlab" as const, repository: "gitlab.com/group/repo", number: 1,
+        headSha, sourceBranch: "topic", targetBranch: "main" };
+      await prepareGitLabReviewHistory({ directory, git, review, repository: "group/repo", branch: "topic" });
+      expect(run(["-C", directory, "diff", "origin/main...HEAD", "--", "file.txt"])).toContain("+changed");
+      await expect(prepareGitLabReviewHistory({ directory, git, review: { ...review, headSha: "a".repeat(40) },
+        repository: "group/repo", branch: "topic" })).rejects.toThrow("changed before the review started");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   test("does not add macOS extended-attribute files to the checkout archive", async () => {
     const directory = await mkdtemp(join(tmpdir(), "useagent-gitlab-archive-test-"));
     try {

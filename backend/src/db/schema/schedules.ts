@@ -13,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { runs } from "./runs";
+import { githubChangeSets } from "./github-publication";
 
 // ---------------------------------------------------------------------------
 // Schedules — unattended autonomy. A schedule fires the existing run-creation
@@ -24,6 +25,14 @@ import { runs } from "./runs";
 /** How a firing was triggered: the cron loop, or a manual "run now". */
 export type ScheduleTrigger = "cron" | "manual";
 export type AutomationJson = Record<string, unknown>;
+/** Explicit, repository-bound authority granted by an automation's owner. */
+export type AutomationCodePolicy = {
+  readonly version: 1;
+  readonly mode: "publish" | "review";
+  readonly repository: string;
+  readonly draft: boolean;
+  readonly allowSandboxActions: boolean;
+};
 
 export const schedules = pgTable(
   "schedules",
@@ -65,6 +74,9 @@ export const schedules = pgTable(
     costLimits: jsonb("cost_limits").$type<AutomationJson | null>(),
     frequencyLimits: jsonb("frequency_limits").$type<AutomationJson | null>(),
     approvalPolicy: jsonb("approval_policy").$type<AutomationJson | null>(),
+    codePolicy: jsonb("code_policy").$type<AutomationCodePolicy | null>(),
+    // A schedule edit revokes all previously selected unattended code actions.
+    codeGeneration: integer("code_generation").notNull().default(0),
     enablementPolicy: jsonb("enablement_policy").$type<AutomationJson | null>(),
     enabled: boolean("enabled").notNull().default(false),
     // Last time the loop fired this schedule. Used to de-dupe within a clock
@@ -119,3 +131,43 @@ export const scheduleFirings = pgTable(
     index("idx_firings_run").on(t.runId),
   ],
 );
+
+export interface AutomationReviewTarget {
+  readonly provider: "github" | "gitlab";
+  readonly repository: string;
+  readonly number: number;
+  readonly headSha: string;
+  readonly sourceBranch: string;
+  readonly targetBranch: string;
+}
+
+/** A selected firing and its durable, independently retryable code effect. */
+export const automationCodeActions = pgTable("automation_code_actions", {
+  idempotencyKey: text("idempotency_key").primaryKey(),
+  scheduleId: uuid("schedule_id").notNull().references(() => schedules.id, { onDelete: "cascade" }),
+  orgId: text("org_id").notNull(),
+  ownerUserId: text("owner_user_id").notNull(),
+  runId: text("run_id").references(() => runs.id, { onDelete: "cascade" }).unique(),
+  policy: jsonb("policy").$type<AutomationCodePolicy>().notNull(),
+  scheduleUpdatedAt: timestamp("schedule_updated_at", { withTimezone: true }).notNull(),
+  scheduleGeneration: integer("schedule_generation").notNull(),
+  scheduleConfigHash: text("schedule_config_hash").notNull(),
+  target: jsonb("target").$type<AutomationReviewTarget | null>(),
+  reviewKey: text("review_key"),
+  state: text("state").$type<"selected" | "waiting" | "pending" | "processing" | "done" | "skipped" | "dead">().notNull().default("selected"),
+  claimToken: uuid("claim_token"),
+  changeSetId: uuid("change_set_id").references(() => githubChangeSets.id, { onDelete: "set null" }),
+  resultUrl: text("result_url"),
+  resultReason: text("result_reason"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(60),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("idx_automation_code_actions_due").on(t.state, t.nextAttemptAt),
+  index("idx_automation_code_actions_review").on(t.scheduleId, t.state),
+  uniqueIndex("uq_automation_code_review_revision").on(t.scheduleId, t.reviewKey)
+    .where(sql`${t.reviewKey} IS NOT NULL AND ${t.state} <> 'dead'`),
+]);

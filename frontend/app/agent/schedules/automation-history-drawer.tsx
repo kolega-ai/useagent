@@ -159,6 +159,10 @@ export function AutomationHistoryDrawer({
                         {firing.run_summary}
                       </p>
                     )}
+                    {firing.code_action ? <p className="mt-2 text-caption-1-regular text-text-secondary">
+                      Code action: {firing.code_action.reason ?? firing.code_action.state}
+                      {firing.code_action.url ? <> {" "}<a href={firing.code_action.url} target="_blank" rel="noreferrer" className="underline">Open request</a></> : null}
+                    </p> : null}
                   </li>
                 );
               })}

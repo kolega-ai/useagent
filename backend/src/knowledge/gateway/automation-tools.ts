@@ -176,6 +176,7 @@ async function createAutomation(
   claims: ToolTokenClaims,
   args: Record<string, unknown>,
 ): Promise<ToolCallResult> {
+  if ("codePolicy" in args) return errorResult("Configure code publication and merging in automation settings.");
   if ("enabled" in args) {
     return errorResult("automation_create always creates disabled automations; enable later with automation_update.");
   }
@@ -205,13 +206,20 @@ async function updateAutomation(
   claims: ToolTokenClaims,
   args: Record<string, unknown>,
 ): Promise<ToolCallResult> {
+  if ("codePolicy" in args) return errorResult("Configure code publication and merging in automation settings.");
   const id = automationId(args);
   if (!id) return errorResult("automation_update requires an automation id.");
+  const current = await getScheduleForOrg(claims.orgId, id);
+  const pausesOnly = args.enabled === false && Object.keys(argumentsWithoutApproval(args)).every((key) => key === "id" || key === "enabled");
+  if (current?.codePolicy && !pausesOnly) {
+    return errorResult("Change code-enabled automations in automation settings.");
+  }
   const patch = { ...args };
   delete patch.confirmEnable;
   delete patch.id;
   try {
-    const schedule = await updateScheduleForOrg(claims.orgId, id, patch, claims.userId || null);
+    const schedule = await updateScheduleForOrg(claims.orgId, id, patch, claims.userId || null,
+      { requireNoCodePolicy: !pausesOnly });
     return textResult(`Updated automation ${schedule.name} (${schedule.id}).`, {
       automation: automationSummary(schedule),
     });

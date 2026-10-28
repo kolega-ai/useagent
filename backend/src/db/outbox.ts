@@ -40,6 +40,14 @@ export interface OutboxTable {
   readonly claimed: string;
   /** Terminal failure state. */
   readonly dead: string;
+  /** Optional per-claim fence for actions that can cause an external effect. */
+  readonly claimTokenColumn?: string;
+}
+
+function claimFence(t: OutboxTable, token?: string) {
+  if (!t.claimTokenColumn) return sql``;
+  if (!token) throw new Error("Outbox claim token is required");
+  return sql`and ${sql.identifier(t.stateColumn)} = ${t.claimed} and ${sql.identifier(t.claimTokenColumn)} = ${token}::uuid`;
 }
 
 /** Exponential-backoff schedule: delay = min(baseMs*2^attempt, maxMs), optionally
@@ -103,6 +111,7 @@ export async function claimDue(
       sql`o.${key}`,
       sql`o.${sql.identifier(t.attemptColumn)}`,
       sql`o.max_attempts`,
+      ...(t.claimTokenColumn ? [sql`o.${sql.identifier(t.claimTokenColumn)}`] : []),
       ...extraColumns.map((c) => sql`o.${sql.identifier(c)}`),
     ],
     sql`, `,
@@ -116,16 +125,17 @@ export async function claimDue(
       for update skip locked
     )
     update ${table} o set ${stateCol} = ${t.claimed}, updated_at = now()
+        ${t.claimTokenColumn ? sql`, ${sql.identifier(t.claimTokenColumn)} = gen_random_uuid()` : sql``}
     from due where o.${key} = due.${key}
     returning ${returning}`)) as unknown as OutboxRow[];
 }
 
 /** Mark a claimed row terminal-success (`successState`) and clear last_error. */
-export async function markSuccess(t: OutboxTable, key: string, successState: string): Promise<void> {
+export async function markSuccess(t: OutboxTable, key: string, successState: string, claimToken?: string): Promise<void> {
   await db.execute(sql`
     update ${sql.identifier(t.table)}
     set ${sql.identifier(t.stateColumn)} = ${successState}, last_error = null, updated_at = now()
-    where ${sql.identifier(t.key)} = ${key}`);
+    where ${sql.identifier(t.key)} = ${key} ${claimFence(t, claimToken)}`);
 }
 
 /** Schedule a claimed row for retry: back to pending, increment the attempt
@@ -135,6 +145,7 @@ export async function markForRetry(
   key: string,
   nextAttemptAt: Date,
   lastError: string,
+  claimToken?: string,
 ): Promise<void> {
   const attemptCol = sql.identifier(t.attemptColumn);
   await db.execute(sql`
@@ -144,7 +155,7 @@ export async function markForRetry(
         next_attempt_at = ${nextAttemptAt.toISOString()}::timestamptz,
         last_error = ${lastError.slice(0, 500)},
         updated_at = now()
-    where ${sql.identifier(t.key)} = ${key}`);
+    where ${sql.identifier(t.key)} = ${key} ${claimFence(t, claimToken)}`);
 }
 
 /** Dead-letter a claimed row: terminal `dead`, increment the attempt counter,
@@ -155,6 +166,7 @@ export async function markDead(
   key: string,
   lastError: string,
   reschedule?: Date,
+  claimToken?: string,
 ): Promise<void> {
   const attemptCol = sql.identifier(t.attemptColumn);
   await db.execute(sql`
@@ -164,7 +176,7 @@ export async function markDead(
         ${reschedule ? sql`next_attempt_at = ${reschedule.toISOString()}::timestamptz,` : sql``}
         last_error = ${lastError.slice(0, 500)},
         updated_at = now()
-    where ${sql.identifier(t.key)} = ${key}`);
+    where ${sql.identifier(t.key)} = ${key} ${claimFence(t, claimToken)}`);
 }
 
 /** Boot recovery: flip rows orphaned in the `claimed` (in-flight) state back to

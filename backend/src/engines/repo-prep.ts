@@ -14,6 +14,7 @@ import { RUN_TIMING_OUTCOMES, RUN_TIMING_STAGES } from "../runs/run-timing";
 import { hasExactGitHubRepositoryUrlProvenance } from "../resources/public-github";
 import { gitLabStoredRepository, GITLAB_REPOSITORY_PREFIX } from "../resources/gitlab-resolver";
 import { authorizeGitLabCheckout, stageGitLabArchive } from "../gitlab/checkout";
+import { reviewTargetForRun } from "../schedules/code-actions-repo";
 import type { RunResource } from "../resources/types";
 import type { EngineRunContext } from "./types";
 import { truncate } from "./util";
@@ -444,6 +445,10 @@ export async function prepareRepos(
       const gitlab = gitLabStoredRepository(parsed.repo);
       if (parsed.repo.startsWith(GITLAB_REPOSITORY_PREFIX) && !gitlab) throw new Error("Invalid GitLab project identity");
       if (gitlab && (!ctx.orgId || !sandbox.fs)) throw new Error("GitLab checkout needs an organization and sandbox filesystem");
+      const review = gitlab && ctx.orgId && ctx.runId ? await reviewTargetForRun(ctx.orgId, ctx.runId) : null;
+      if (review && (review.provider !== "gitlab" || review.repository !== gitlab || review.sourceBranch !== parsed.branch)) {
+        throw new Error("The selected GitLab review no longer matches this checkout.");
+      }
       const changed = await ensureRepoClone(sandbox, workdir, r, ctx, {
         useGithubCredential: gitlab ? false : shouldUseGithubCredential(r, ctx.resolvedResources ?? []),
         runtimeLayout,
@@ -453,9 +458,18 @@ export async function prepareRepos(
             ctx.signal.throwIfAborted();
             await authorizeGitLabCheckout(ctx.orgId!, gitlab.slice(GITLAB_REPOSITORY_PREFIX.length));
             ctx.signal.throwIfAborted();
+            if (review) {
+              const dir = `${workdir}/${gitlab}`;
+              const verify = await sandbox.process.executeCommand(
+                `set -eu; DIR=${shq(dir)}; test "$(git -c safe.directory="$DIR" -C "$DIR" rev-parse HEAD)" = ${shq(review.headSha)}; ` +
+                `git -c safe.directory="$DIR" -C "$DIR" merge-base HEAD ${shq(`refs/remotes/origin/${review.targetBranch}`)} >/dev/null`,
+                undefined, undefined, 30,
+              );
+              if (verify.exitCode !== 0) throw new Error("The retained GitLab checkout lacks the selected review revision or target history. Start a fresh workspace.");
+            }
           },
           prepareCloneSource: () => stageGitLabArchive({ sandbox: sandbox as SandboxHandle, orgId: ctx.orgId!,
-            repository: gitlab.slice(GITLAB_REPOSITORY_PREFIX.length), branch: parsed.branch, runtimeLayout, signal: ctx.signal }),
+            repository: gitlab.slice(GITLAB_REPOSITORY_PREFIX.length), branch: parsed.branch, runtimeLayout, signal: ctx.signal, review }),
         } : {}),
       });
       if (changed) changedPaths.push(`${workdir}/${parseRepoRef(r).repo}`);

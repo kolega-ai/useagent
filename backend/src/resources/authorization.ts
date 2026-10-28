@@ -1,4 +1,4 @@
-import { resolveGithubAuth } from "../github/auth";
+import { resolveGithubAuth, resolveGithubCatalogAuth } from "../github/auth";
 import { listRepos, unknownRepos, type RepoListing } from "../github/repos";
 import { hasExactGitHubRepositoryUrlProvenance } from "./public-github";
 import { getRunForOrg } from "../runs/repo";
@@ -42,8 +42,9 @@ export interface RunResourceAuthorizationDependencies {
 export async function verifyGithubPullRequest(
   repository: string,
   number: number,
+  orgId?: string,
 ): Promise<{ readonly headSha: string }> {
-  const auth = await resolveGithubAuth();
+  const auth = orgId ? await resolveGithubCatalogAuth(orgId) : await resolveGithubAuth();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -118,7 +119,7 @@ export function createRunResourceAuthorization(
 ): ResourceAuthorization {
   const list = dependencies.listRepos ?? listRepos;
   const unknown = dependencies.unknownRepos ?? unknownRepos;
-  const verifyPull = dependencies.verifyPullRequest ?? verifyGithubPullRequest;
+  const verifyPull = dependencies.verifyPullRequest ?? ((repository, number) => verifyGithubPullRequest(repository, number, orgId));
   const verifyPublic = dependencies.verifyPublicRepository ?? verifyPublicGithubRepository;
   const findThread = dependencies.findThread ?? getRunForOrg;
   const verifyGitLab = dependencies.verifyGitLabRepository ?? (async (id, repository) => {

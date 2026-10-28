@@ -17,7 +17,7 @@ import { GITLAB_REPOSITORY_PREFIX, normalizeGitLabRepository } from "../resource
 import { getRunForOrg } from "../runs/repo";
 import { authorizeGitLabCheckout, authorizeGitLabProject, withGitLabCheckout } from "./checkout";
 import { GitLabApiError, gitLabRequest } from "./client";
-import { applyPatchAndDescribe } from "./publication-manifest";
+import { applyPatchAndDescribe } from "../repositories/patch-manifest";
 
 const LEASE_MS = 240_000; // Longer than the 180-second Git operation deadline.
 type Branch = { name?: unknown; commit?: { id?: unknown } };
@@ -79,7 +79,8 @@ async function markSuccess(orgId: string, claim: ClaimedGitHubPublicationReceipt
   return receipt;
 }
 
-async function reconcile(orgId: string, set: GitHubChangeSetRecord, claim: ClaimedGitHubPublicationReceipt, signal: AbortSignal) {
+async function reconcile(orgId: string, set: GitHubChangeSetRecord, claim: ClaimedGitHubPublicationReceipt, signal: AbortSignal,
+  assertAuthorized?: () => Promise<void>) {
   const repository = set.repoFullName.slice(GITLAB_REPOSITORY_PREFIX.length);
   const sha = claim.receipt.commitSha;
   if (!sha) return recordGitHubPublicationPreRefAbort({ orgId, receiptId: claim.receipt.id, claimToken: claim.claimToken });
@@ -92,13 +93,14 @@ async function reconcile(orgId: string, set: GitHubChangeSetRecord, claim: Claim
   if (existing) return markSuccess(orgId, claim, sha, existing);
   await renew(orgId, claim);
   await currentToken(orgId, repository, token);
+  await assertAuthorized?.();
   const result = await createMergeRequest(token, repository, project.id, claim.receipt, signal);
   return markSuccess(orgId, claim, sha, result);
 }
 
 export async function publishGitLabChangeSet(input: {
   readonly orgId: string; readonly userId: string; readonly changeSetId: string; readonly signal: AbortSignal;
-}, dependencies: { readonly checkout?: typeof withGitLabCheckout } = {}): Promise<GitHubPublicationReceiptRecord> {
+}, dependencies: { readonly checkout?: typeof withGitLabCheckout; readonly assertAuthorized?: () => Promise<void> } = {}): Promise<GitHubPublicationReceiptRecord> {
   const set = await getGitHubChangeSetForOrg(input.orgId, input.changeSetId);
   if (!set || set.provider !== "gitlab" || set.userId !== input.userId ||
       !set.repoFullName.startsWith(GITLAB_REPOSITORY_PREFIX) || !normalizeGitLabRepository(set.repoFullName)) {
@@ -120,7 +122,7 @@ export async function publishGitLabChangeSet(input: {
   let externalEffectStarted = claim.mode === "reconcile";
   try {
     if (claim.mode === "reconcile") {
-      const result = await reconcile(input.orgId, set, claim, input.signal);
+      const result = await reconcile(input.orgId, set, claim, input.signal, dependencies.assertAuthorized);
       if (!result) throw new Error("Publication status could not be confirmed.");
       return result;
     }
@@ -154,11 +156,13 @@ export async function publishGitLabChangeSet(input: {
       if (!target || target.name !== set.baseRef || target.commit?.id !== set.baseSha || head) throw new Error("The target changed or the publication branch already exists. Prepare the changes again.");
       await currentToken(input.orgId, repository, token);
       await renew(input.orgId, claim!);
+      await dependencies.assertAuthorized?.();
       externalEffectStarted = true;
       await git(["-C", directory, "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "http.followRedirects=false",
         "push", `--force-with-lease=refs/heads/${intended.headBranch}:`, "origin", `HEAD:refs/heads/${intended.headBranch}`]);
       await renew(input.orgId, claim!);
       await currentToken(input.orgId, repository, token);
+      await dependencies.assertAuthorized?.();
       const result = await createMergeRequest(token, repository, project.id, intended, input.signal);
       return await markSuccess(input.orgId, claim!, sha, result);
     });

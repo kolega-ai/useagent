@@ -22,7 +22,7 @@ export async function applyPatchAndDescribe(input: {
 }): Promise<GitHubChangeManifest> {
   const run = (args: string[], captureMaxBytes?: number) => input.git(["--literal-pathspecs", "-C", input.directory, ...args], { captureMaxBytes });
   const head = (await run(["rev-parse", "HEAD"], 128)).toString("utf8").trim();
-  if (head !== input.baseSha) throw new Error("The GitLab target branch moved. Refresh the workspace before publishing.");
+  if (head !== input.baseSha) throw new Error("The target branch moved. Refresh the workspace before publishing.");
   const path = join(input.directory, "..", "publication.patch");
   await writeFile(path, input.patch, { mode: 0o600 });
   await run(["-c", "core.hooksPath=/dev/null", "apply", "--index", "--binary", "--whitespace=nowarn", "--", path]);

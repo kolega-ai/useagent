@@ -8,6 +8,7 @@ import { collectRunEvidence } from "../memory/capture-evidence";
 import { assessCaptureSalience } from "../memory/capture-salience";
 import { isInternalRunOrigin } from "./origin";
 import { recordRunFollowups } from "./followups";
+import { settleCodeAction } from "../schedules/code-actions-repo";
 import {
   createSlackRunResponse,
   findSlackRunResponse,
@@ -612,6 +613,7 @@ async function commitRunFinalizationAttempt(
     // enqueued in THIS transaction (idempotent per run) so it survives a crash
     // exactly like the thread reply. Both terminal statuses deliver; the
     // allowlist is re-checked at delivery-enqueue time.
+    await settleCodeAction(runId, effectiveStatus, tx);
     const automation = await findScheduleForRun(runId, tx);
     if (automation) {
       await settleFiring(runId, effectiveStatus, tx);
