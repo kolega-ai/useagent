@@ -15,9 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentsRail } from "@/components/chat/agents-rail";
 import { deriveThreadGatewayChildren } from "@/components/chat/gateway-children";
 import {
-  type ApprovalDecision,
-  type PendingApproval,
-  selectPendingApproval,
+  type ApprovalDecision, type PendingApproval, selectPendingApproval,
 } from "@/components/chat/approval-state";
 import { ArtifactsRail } from "@/components/chat/artifacts-rail";
 import {
@@ -671,6 +669,8 @@ export function SessionView({ initialThread, initialOutline = null, initialRelat
             </div>
             <SessionThreadActions
               runId={newest.id}
+              gitlabRepositories={runGitRefs(root).map((ref) => ref.repo).filter((repo) => repo.startsWith("gitlab.com/"))}
+              live={live}
               exportData={{ threadId: rootId, turns, snapshot }}
               showSurfaceOpener={hasRuntimeSurfaces && !sheetSurfacesOpen}
               splitTooNarrow={splitTooNarrow}

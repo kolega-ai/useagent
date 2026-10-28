@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
+import { GITLAB_REPOSITORY_PREFIX, normalizeGitLabRepository } from "../resources/gitlab-resolver";
 import {
   githubChangeSets,
   githubPublicationReceipts,
@@ -26,6 +27,12 @@ import {
 } from "./publication-repo-input.js";
 
 const PUBLICATION_CLAIM_MS = 30_000;
+const MAX_PUBLICATION_CLAIM_MS = 5 * 60_000;
+function claimDuration(value?: number): number {
+  if (value === undefined) return PUBLICATION_CLAIM_MS;
+  if (!Number.isSafeInteger(value) || value < PUBLICATION_CLAIM_MS || value > MAX_PUBLICATION_CLAIM_MS) throw new Error("publication claim duration is invalid");
+  return value;
+}
 export {
   assertChangeSetExpiry,
   assertPublicationRequestMatches,
@@ -49,6 +56,7 @@ export async function freezeGitHubChangeSet(
     readonly orgId: string;
     readonly userId: string | null;
     readonly runId: string;
+    readonly provider?: "github" | "gitlab";
     readonly repoFullName: string;
     readonly baseRef: string;
     readonly baseSha: string;
@@ -72,9 +80,12 @@ export async function freezeGitHubChangeSet(
     .where(and(eq(runs.id, input.runId), eq(runs.orgId, orgId)))
     .limit(1);
   if (!run) throw new Error("run not found for github change set");
-  const repoFullName = boundedText(input.repoFullName, "repoFullName", MAX_LABEL_LENGTH);
-  if (!/^[^/\s]+\/[^/\s]+$/u.test(repoFullName)) throw new Error("repoFullName is invalid");
-  assertRunRepositoryBinding(run, repoFullName);
+  const provider = input.provider ?? "github";
+  const repoFullName = boundedText(input.repoFullName, "repoFullName", provider === "gitlab" ? 411 : MAX_LABEL_LENGTH);
+  if (provider === "gitlab") {
+    if (!repoFullName.startsWith(GITLAB_REPOSITORY_PREFIX) || !normalizeGitLabRepository(repoFullName)) throw new Error("repoFullName is invalid");
+  } else if (!/^[^/\s]+\/[^/\s]+$/u.test(repoFullName)) throw new Error("repoFullName is invalid");
+  assertRunRepositoryBinding(run, repoFullName, provider);
   const baseRef = boundedText(input.baseRef, "baseRef", MAX_LABEL_LENGTH);
   const baseSha = sha(input.baseSha, "baseSha", [40, 64]);
   const payloadStorageKey = boundedText(
@@ -109,6 +120,7 @@ export async function freezeGitHubChangeSet(
     .insert(githubChangeSets)
     .values({
       orgId,
+      provider,
       userId: input.userId,
       runId: run.id,
       threadId: run.threadId,
@@ -248,11 +260,12 @@ export async function ensureGitHubPublicationReceipt(
 export async function claimGitHubPublicationReceipt(
   orgId: string,
   receiptId: string,
+  leaseMs?: number,
 ): Promise<ClaimedGitHubPublicationReceipt | null> {
   return db.transaction(async (tx) => {
     const now = new Date();
     const claimToken = randomUUID();
-    const claimExpiresAt = new Date(now.getTime() + PUBLICATION_CLAIM_MS);
+    const claimExpiresAt = new Date(now.getTime() + claimDuration(leaseMs));
     const [receipt] = await tx
       .update(githubPublicationReceipts)
       .set({
@@ -298,11 +311,12 @@ export async function claimGitHubPublicationReceipt(
 export async function claimGitHubPublicationReconciliation(
   orgId: string,
   receiptId: string,
+  leaseMs?: number,
 ): Promise<ClaimedGitHubPublicationReceipt | null> {
   return db.transaction(async (tx) => {
     const now = new Date();
     const claimToken = randomUUID();
-    const claimExpiresAt = new Date(now.getTime() + PUBLICATION_CLAIM_MS);
+    const claimExpiresAt = new Date(now.getTime() + claimDuration(leaseMs));
     const [receipt] = await tx
       .update(githubPublicationReceipts)
       .set({ state: "reconcile_required", claimToken, claimExpiresAt, updatedAt: now })
@@ -344,12 +358,13 @@ export async function renewGitHubPublicationClaim(input: {
   readonly orgId: string;
   readonly receiptId: string;
   readonly claimToken: string;
+  readonly leaseMs?: number;
 }): Promise<boolean> {
   const now = new Date();
   const [row] = await db
     .update(githubPublicationReceipts)
     .set({
-      claimExpiresAt: new Date(now.getTime() + PUBLICATION_CLAIM_MS),
+      claimExpiresAt: new Date(now.getTime() + claimDuration(input.leaseMs)),
       updatedAt: now,
     })
     .where(
@@ -399,6 +414,7 @@ export async function recordGitHubPublicationSuccess(input: {
   readonly commitSha: string;
   readonly pullRequestNumber?: number | null;
   readonly pullRequestUrl?: string | null;
+  readonly provider?: "github" | "gitlab";
 }): Promise<GitHubPublicationReceiptRecord | null> {
   const commitSha = sha(input.commitSha, "commitSha", [40, 64]);
   if (
@@ -413,7 +429,8 @@ export async function recordGitHubPublicationSuccess(input: {
     : null;
   if (pullRequestUrl) {
     const parsed = new URL(pullRequestUrl);
-    if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") {
+    const hostname = input.provider === "gitlab" ? "gitlab.com" : "github.com";
+    if (parsed.protocol !== "https:" || parsed.hostname !== hostname || parsed.username || parsed.password || parsed.port || parsed.search || parsed.hash) {
       throw new Error("pullRequestUrl is invalid");
     }
   }
@@ -439,6 +456,7 @@ export async function recordGitHubPublicationSuccess(input: {
           inArray(githubPublicationReceipts.state, ["publishing", "reconcile_required"]),
           eq(githubPublicationReceipts.claimToken, input.claimToken),
           eq(githubPublicationReceipts.commitSha, commitSha),
+          sql`exists (select 1 from ${githubChangeSets} where ${githubChangeSets.id} = ${githubPublicationReceipts.changeSetId} and ${githubChangeSets.orgId} = ${input.orgId} and ${githubChangeSets.provider} = ${input.provider ?? "github"})`,
         ),
       )
       .returning();

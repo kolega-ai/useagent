@@ -792,6 +792,13 @@
       "when": 1792800000028,
       "tag": "0118_e2b_repository_template",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1792800000029,
+      "tag": "0119_publication_provider",
+      "breakpoints": true
     }
   ]
 }
