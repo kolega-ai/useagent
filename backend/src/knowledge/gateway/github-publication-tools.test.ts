@@ -50,6 +50,7 @@ function changeSet(overrides: Partial<GitHubChangeSetRecord> = {}): GitHubChange
     userId: claims.userId,
     runId: claims.runId,
     threadId: claims.threadId,
+    provider: "github",
     projectId: null,
     repoFullName: "acme/widget",
     baseRef: "main",

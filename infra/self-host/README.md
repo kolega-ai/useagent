@@ -121,12 +121,23 @@ trusted backend creates a shallow checkout and transfers it into the sandbox;
 the compressed checkout must be at most 128 MiB. Custom repository images can
 be selected for GitLab projects just like GitHub projects.
 
-This integration supports GitLab.com, not self-managed GitLab instances. It
-does not yet create GitLab branches or merge requests: the GitLab credential
-stays in the control plane. To take changes out, ask the agent to create a
-patch containing the desired changes and include a Markdown link to the patch
-file in its final answer. UseAgent publishes the linked sandbox file as a
-downloadable artifact; apply it to your own checkout after reviewing it.
+When a thread finishes, open **Thread actions > Create GitLab merge request**.
+Enter a title and choose whether the request is a draft, then prepare and
+download the frozen patch for review. **Approve and create** creates a new
+`useagent/` branch and merge request from those exact changes. This action is
+available with Kolega Code and the other supported engines; the agent does not
+receive the GitLab credential. The connected account must be allowed to push a
+new branch and create a merge request in the selected project. If GitLab's
+response is lost, use **Check and retry** to reconcile the existing branch and
+request before creating anything else.
+
+The review expires after one hour before publication starts. A publication
+includes tracked changes and unignored new files, limited to 200 files, 5 MiB
+per file and 25 MiB for the patch and total file contents. Git submodules are
+not supported. If the target branch moves, refresh the workspace and prepare a
+new review. These limits and checks apply to all sandbox providers.
+
+This integration supports GitLab.com, not self-managed GitLab instances.
 Access is rechecked when each turn prepares a GitLab checkout, including a
 checkout already present in a repository image or retained sandbox. If the
 connection is revoked, reconnect it before continuing the thread; its retained

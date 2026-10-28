@@ -4,6 +4,7 @@ import {
   runs,
   type GitHubChangeManifest,
 } from "../db/schema.js";
+import { GITLAB_REPOSITORY_PREFIX } from "../resources/gitlab-resolver";
 
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_MANIFEST_FILES = 200;
@@ -174,14 +175,18 @@ export function publicationRequestFingerprint(input: {
 export function assertRunRepositoryBinding(
   run: RunRepositoryBinding,
   repoFullName: string,
+  provider: "github" | "gitlab" = "github",
 ): void {
   const bound = new Set<string>();
   for (const resource of run.resolvedResources) {
-    if (
+    if (provider === "github" && (
       resource.locator.type === "github.repository" ||
       resource.locator.type === "github.pull_request"
-    ) {
+    )) {
       bound.add(resource.locator.repository.toLowerCase());
+    } else if (provider === "gitlab" && resource.provider === "gitlab" &&
+        resource.locator.type === "gitlab.repository" && resource.capabilities.includes("code.checkout")) {
+      bound.add(`${GITLAB_REPOSITORY_PREFIX}${resource.locator.repository}`.toLowerCase());
     }
   }
   if (!bound.has(repoFullName.toLowerCase())) {

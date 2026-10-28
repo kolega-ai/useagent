@@ -1,6 +1,7 @@
 "use client";
 
-import { RiCodeSSlashLine, RiLayoutRightLine, RiMarkdownLine, RiMore2Line } from "@remixicon/react";
+import { RiCodeSSlashLine, RiGitMergeLine, RiLayoutRightLine, RiMarkdownLine, RiMore2Line } from "@remixicon/react";
+import { useState } from "react";
 import { Button } from "@/components/base/buttons/button";
 import {
   Dropdown,
@@ -16,6 +17,7 @@ import {
   type ThreadExportFormat,
 } from "./thread-export";
 import { RunFeedback } from "./run-feedback";
+import { GitLabPublicationDialog } from "./gitlab-publication";
 import { RAIL_ICON_BUTTON } from "./surface-chooser";
 import { cx } from "@/utils/cx";
 
@@ -25,13 +27,18 @@ export function SessionThreadActions({
   showSurfaceOpener,
   splitTooNarrow,
   onOpenSurfaces,
+  gitlabRepositories = [],
+  live = false,
 }: {
   runId: string;
   exportData: ThreadExportData;
   showSurfaceOpener: boolean;
   splitTooNarrow: boolean;
   onOpenSurfaces: () => void;
+  gitlabRepositories?: readonly string[];
+  live?: boolean;
 }) {
+  const [publicationOpen, setPublicationOpen] = useState(false);
   const exportThread = (format: ThreadExportFormat) => {
     const content =
       format === "markdown"
@@ -55,6 +62,11 @@ export function SessionThreadActions({
             <RiMore2Line className="size-4" aria-hidden />
           </DropdownTrigger>
           <DropdownMenu aria-label="Thread actions" placement="bottom end" className="w-max">
+            {gitlabRepositories.length > 0 ? <DropdownMenuItem id="gitlab-publish" textValue="Create GitLab merge request"
+              isDisabled={live} onAction={() => setPublicationOpen(true)}>
+              <RiGitMergeLine className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />
+              <span className="text-body-2-medium text-text-primary">Create GitLab merge request</span>
+            </DropdownMenuItem> : null}
             <DropdownMenuItem
               id="export-markdown"
               textValue="Export as Markdown"
@@ -79,6 +91,8 @@ export function SessionThreadActions({
             </DropdownMenuItem>
           </DropdownMenu>
         </Dropdown>
+      {gitlabRepositories.length > 0 ? <GitLabPublicationDialog open={publicationOpen} onOpenChange={setPublicationOpen}
+        runId={runId} repositories={gitlabRepositories} /> : null}
       {/* In sheet mode (below md, or a too-narrow md+ split) this opens the surfaces rail. */}
       {showSurfaceOpener && (
         <Button

@@ -5,9 +5,11 @@ import { isSafeGitRevision } from "../resources/github-resolver";
 import { normalizeGitLabRepository } from "../resources/gitlab-resolver";
 import { gitLabProject, gitLabProjects, gitLabRequest } from "./client";
 import { connectGitLab, disconnectGitLab, gitLabConnectionStatus, gitLabToken } from "./connection";
+import { gitlabPublicationRoutes } from "./publication-routes";
 
 export const gitlabRoutes = new Hono<AppEnv>();
 gitlabRoutes.use("*", orgScope);
+gitlabRoutes.route("/publications", gitlabPublicationRoutes);
 
 gitlabRoutes.get("/connection", async (c) => c.json(await gitLabConnectionStatus(c.get("orgId"))));
 gitlabRoutes.put("/connection", orgAdminScope, async (c) => {

@@ -282,7 +282,7 @@ jobs:
           for p in packages/*/; do
             if [ -f "$p/package.json" ]; then (cd "$p" && bun install --frozen-lockfile); fi
           done
-      # `bun run test` = `bun test components app lib`: the chat store/timeline/
+      # `bun run test` covers components/app/lib and the isolated dialog test: the chat store/timeline/
       # part-renderer logic, the route-level app tests and the lib helpers. All
       # three trees are pure and deterministic.
       - name: bun run test

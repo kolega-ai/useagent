@@ -63,6 +63,7 @@ export const githubChangeSets = pgTable(
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
     threadId: text("thread_id").notNull(),
+    provider: text("provider").$type<"github" | "gitlab">().notNull().default("github"),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     repoFullName: text("repo_full_name").notNull(),
     baseRef: text("base_ref").notNull(),

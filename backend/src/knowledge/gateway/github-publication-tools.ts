@@ -322,6 +322,7 @@ function ownedChangeSet(
 ): GitHubChangeSetRecord {
   if (
     !changeSet ||
+    changeSet.provider !== "github" ||
     changeSet.runId !== claims.runId ||
     changeSet.threadId !== claims.threadId ||
     changeSet.userId !== claims.userId
