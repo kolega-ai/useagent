@@ -7,6 +7,7 @@ import { Template } from "e2b";
 import { claudeProviderGatewayEnvironment } from "../src/provider-gateway/sandbox-config";
 import { loadNativeImageInputs, nativeImageName, nativeImageSteps } from "../src/sandboxes/native-image";
 import { sandboxRuntimeLayout } from "../src/sandboxes/provider";
+import { e2bNodeBootstrapCommand } from "../src/sandboxes/e2b-image";
 
 function argument(name: string, fallback?: string): string {
   const index = process.argv.indexOf(`--${name}`);
@@ -34,6 +35,9 @@ const directory = await mkdtemp(join(tmpdir(), "useagent-e2b-image-"));
 
 try {
   const template = Template({ fileContextPath: directory }).fromTemplate(base).setUser("root");
+  // E2B's base may contain an older Node that cannot run the native driver.
+  // Install the same pinned release used by the backend image before its steps.
+  template.runCmd(e2bNodeBootstrapCommand());
   const steps = nativeImageSteps(sandboxRuntimeLayout("e2b"), inputs);
   for (const [index, step] of steps.entries()) {
     for (const [fileIndex, file] of step.files.entries()) {
@@ -58,6 +62,8 @@ try {
     onBuildLogs(entry) {
       if (entry.message === "All file uploads completed") console.log("E2B image assets uploaded");
       if (entry.message === "Starting building...") console.log("E2B template build started");
+      const step = entry.message.match(/RUN sh '\/root\/\.useagent-image-build\/step-(\d+)\.sh'/);
+      if (step && steps[Number(step[1])]) console.log(`Preparing ${steps[Number(step[1])]!.name}`);
     },
   });
   console.log(`E2B template ${result.templateId} is ready. Set E2B_TEMPLATE_ID to ${name}.`);
