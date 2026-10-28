@@ -211,6 +211,10 @@ the composer's Plan option selects Plan mode and declines commands and writes;
 Manual selects Build mode and asks for native permissions. More permissive
 automatic approval modes are not offered for this engine. ACP output that cannot be represented by the
 shared event vocabulary is not projected as a separate UI protocol.
+When one tool call reports changes to multiple files, UseAgent lists the files
+but does not show an individual patch for each. A single-file patch spanning
+separate edits may include unchanged lines between them; inspect the workspace
+or its Git diff for the precise changes.
 
 Kolega's ACP usage updates report context use rather than billed model usage.
 UseAgent therefore cannot currently charge these calls to its spend ledger or
