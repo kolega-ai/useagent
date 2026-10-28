@@ -12,16 +12,23 @@ import { resolveGithubSandboxToken } from "../github/auth";
 import { parseRepoRef } from "../github/repo-ref";
 import { RUN_TIMING_OUTCOMES, RUN_TIMING_STAGES } from "../runs/run-timing";
 import { hasExactGitHubRepositoryUrlProvenance } from "../resources/public-github";
+import { gitLabStoredRepository, GITLAB_REPOSITORY_PREFIX } from "../resources/gitlab-resolver";
+import { authorizeGitLabCheckout, stageGitLabArchive } from "../gitlab/checkout";
 import type { RunResource } from "../resources/types";
 import type { EngineRunContext } from "./types";
 import { truncate } from "./util";
 
-type RepoSandbox = { readonly process: Pick<SandboxHandle["process"], "executeCommand"> };
+type RepoSandbox = { readonly process: Pick<SandboxHandle["process"], "executeCommand">; readonly fs?: SandboxHandle["fs"] };
 type RepoCloneContext = Pick<EngineRunContext, "emit" | "orgId">;
 type RepoCheckoutContext = RepoCloneContext & Pick<EngineRunContext, "repos">;
 type RepoCloneOptions = {
   readonly useGithubCredential?: boolean;
   readonly runtimeLayout?: SandboxRuntimeLayout;
+  readonly originUrl?: string;
+  /** A trusted-plane checkout may provide a credential-free local archive. */
+  readonly prepareCloneSource?: () => Promise<{ source: string; cleanup(): Promise<void> }>;
+  /** Recheck access before exposing an existing checkout to the agent. */
+  readonly verifyPreparedCheckout?: () => Promise<void>;
 };
 const ROOT_RUNTIME_LAYOUT: SandboxRuntimeLayout = {
   home: "/root",
@@ -108,7 +115,7 @@ export async function ensureRepoClone(
   // subdir/URL use the clean repo and the clone checks out the chosen branch.
   const { repo, branch } = parseRepoRef(entry);
   const runtimeLayout = options.runtimeLayout ?? ROOT_RUNTIME_LAYOUT;
-  const url = `https://github.com/${repo}.git`;
+  const url = options.originUrl ?? `https://github.com/${repo}.git`;
   // OWNER-QUALIFIED subdir (`<workdir>/<owner>/<name>`), NOT a bare basename. Two selected
   // repos that share a basename (`a/widget` + `b/widget`) get distinct checkouts instead of
   // colliding on one directory (same-basename collision).
@@ -160,8 +167,14 @@ export async function ensureRepoClone(
     emptyDirectoryState +
     `else echo state:occupied; fi`;
   const idState = (await sandbox.process.executeCommand(idScript, undefined, undefined, 15)).result ?? "";
-  if (idState.includes("state:reuse")) return false;
-  if (idState.includes("state:ownership")) return true;
+  if (idState.includes("state:reuse")) {
+    await options.verifyPreparedCheckout?.();
+    return false;
+  }
+  if (idState.includes("state:ownership")) {
+    await options.verifyPreparedCheckout?.();
+    return true;
+  }
 
   if (idState.includes("state:agent-branch")) {
     throw new Error(
@@ -220,22 +233,31 @@ export async function ensureRepoClone(
   const writeOwnershipReceipt = runtimeLayout.runsAsRoot
     ? ""
     : `printf 'uid=%s\n' "$CURRENT_UID" > ${shq(runtimeOwnershipMarker)}; chmod 600 ${shq(runtimeOwnershipMarker)}; `;
-  const script =
-    `set -e; DIR=${shq(dir)}; ALLOW=${allowReplace}; PARENT="$(dirname "$DIR")"; ` +
-    `if [ ! -e "$PARENT" ]; then mkdir "$PARENT" 2>/dev/null || true; fi; ` +
-    `CURRENT_UID="$(id -u)"; ` +
+  const parentChecks = repo.split("/").slice(0, -1).map((part) =>
+    `PARENT="$PARENT"/${shq(part)}; if [ ! -e "$PARENT" ]; then mkdir "$PARENT" 2>/dev/null || true; fi; ` +
     `if [ ! -d "$PARENT" ] || [ -L "$PARENT" ] || [ "$(stat -c %u "$PARENT" 2>/dev/null)" != "$CURRENT_UID" ]; ` +
-    `then echo clone:parent-untrusted; exit 1; fi; chmod 755 "$PARENT"; ` +
+    `then echo clone:parent-untrusted; exit 1; fi; chmod 755 "$PARENT"; `,
+  ).join("");
+  const source = await options.prepareCloneSource?.();
+  const cloneUrl = source?.source ?? url;
+  const cloneCommand = source
+    ? `if ! tar -xzf ${shq(cloneUrl)} --no-same-owner --no-same-permissions -C "$TMP" >"$L" 2>&1; ` +
+      `then echo clone:failed; rm -rf "$TMP" "$L"; exit 1; fi; ` +
+      `git -C "$TMP" remote set-url origin ${shq(url)}; `
+    : `if ! git clone ${branchArg}${shq(cloneUrl)} "$TMP" >"$L" 2>&1; then ` +
+      `if grep -Fq 'Clone succeeded, but checkout failed.' "$L" && ` +
+      `grep -Fq 'this operation must be run in a work tree' "$L" && [ -d "$TMP/.git" ] && ` +
+      `git --git-dir="$TMP/.git" config core.bare false && ` +
+      `git --git-dir="$TMP/.git" --work-tree="$TMP" checkout --force HEAD >>"$L" 2>&1; ` +
+      `then echo clone:checkout-recovered; ` +
+      `else echo clone:failed; tail -c 1200 "$L"; rm -rf "$TMP" "$L"; exit 1; fi; fi; `;
+  const script =
+    `set -e; DIR=${shq(dir)}; ALLOW=${allowReplace}; PARENT=${shq(workdir)}; CURRENT_UID="$(id -u)"; ` +
+    parentChecks +
     stagingSetup +
     `rm -f ${shq(runtimeOwnershipMarker)}; ` +
     `TMP="$(mktemp -d "$STAGE_ROOT/clone.XXXXXX")"; ` + cloneLog +
-    `if ! git clone ${branchArg}${shq(url)} "$TMP" >"$L" 2>&1; then ` +
-    `if grep -Fq 'Clone succeeded, but checkout failed.' "$L" && ` +
-    `grep -Fq 'this operation must be run in a work tree' "$L" && [ -d "$TMP/.git" ] && ` +
-    `git --git-dir="$TMP/.git" config core.bare false && ` +
-    `git --git-dir="$TMP/.git" --work-tree="$TMP" checkout --force HEAD >>"$L" 2>&1; ` +
-    `then echo clone:checkout-recovered; ` +
-    `else echo clone:failed; tail -c 1200 "$L"; rm -rf "$TMP" "$L"; exit 1; fi; fi; ` +
+    cloneCommand +
     `RU="$(git -C "$TMP" remote get-url origin 2>/dev/null)"; ` +
     `if [ "$RU" != ${shq(url)} ]; then echo clone:badorigin; rm -rf "$TMP" "$L"; exit 1; fi; ` +
     `printf '${REPO_OWNED_MARKER} repo=%s\\n' ${shq(repo)} > "$TMP/.git/${REPO_OWNED_MARKER}"; ` +
@@ -257,12 +279,12 @@ export async function ensureRepoClone(
     `else [ -e "$BAK" ] && mv "$BAK" "$DIR" 2>/dev/null; ` +
     `[ "$ALLOW" = empty ] && [ ! -e "$DIR" ] && mkdir -m 700 "$DIR" 2>/dev/null; ` +
     `rm -rf "$TMP" "$L"; echo clone:collision; exit 1; fi`;
-  await ctx.emit({
-    kind: "command",
-    label: branch ? `Cloning ${repo} (${branch})` : `Cloning ${repo}`,
-    chip: "git",
-  });
-  const res = await sandbox.process.executeCommand(script, undefined, authEnv, 300);
+  let res;
+  try {
+    await ctx.emit({ kind: "command", label: branch ? `Cloning ${repo} (${branch})` : `Cloning ${repo}`, chip: "git" });
+    res = await sandbox.process.executeCommand(script, undefined, authEnv, 300);
+  }
+  finally { await source?.cleanup(); }
   const out = (res.result ?? "").trim();
   if ((res.exitCode ?? 1) !== 0 || /clone:(failed|badorigin|collision|parent-untrusted)/.test(out)) {
     if (/clone:parent-untrusted/.test(out)) {
@@ -418,9 +440,23 @@ export async function prepareRepos(
   try {
     for (const r of repos) {
       if (ctx.signal.aborted) throw new Error("run aborted (timeout)");
+      const parsed = parseRepoRef(r);
+      const gitlab = gitLabStoredRepository(parsed.repo);
+      if (parsed.repo.startsWith(GITLAB_REPOSITORY_PREFIX) && !gitlab) throw new Error("Invalid GitLab project identity");
+      if (gitlab && (!ctx.orgId || !sandbox.fs)) throw new Error("GitLab checkout needs an organization and sandbox filesystem");
       const changed = await ensureRepoClone(sandbox, workdir, r, ctx, {
-        useGithubCredential: shouldUseGithubCredential(r, ctx.resolvedResources ?? []),
+        useGithubCredential: gitlab ? false : shouldUseGithubCredential(r, ctx.resolvedResources ?? []),
         runtimeLayout,
+        ...(gitlab ? {
+          originUrl: `https://${gitlab}.git`,
+          verifyPreparedCheckout: async () => {
+            ctx.signal.throwIfAborted();
+            await authorizeGitLabCheckout(ctx.orgId!, gitlab.slice(GITLAB_REPOSITORY_PREFIX.length));
+            ctx.signal.throwIfAborted();
+          },
+          prepareCloneSource: () => stageGitLabArchive({ sandbox: sandbox as SandboxHandle, orgId: ctx.orgId!,
+            repository: gitlab.slice(GITLAB_REPOSITORY_PREFIX.length), branch: parsed.branch, runtimeLayout, signal: ctx.signal }),
+        } : {}),
       });
       if (changed) changedPaths.push(`${workdir}/${parseRepoRef(r).repo}`);
     }

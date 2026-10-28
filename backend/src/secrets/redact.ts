@@ -12,6 +12,7 @@ const INLINE_CREDENTIAL_RES: readonly [RegExp, string][] = [
   // Bare provider key shapes (OpenAI sk-, GitHub gh?_, Slack xox?-, AWS AKIA)
   [/\b(sk|rk)-[A-Za-z0-9]{16,}\b/gi, REDACTED],
   [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, REDACTED],
+  [/\bglpat-[A-Za-z0-9_-]{12,}\b/g, REDACTED],
   [/\bxox[abposr]-[A-Za-z0-9-]{10,}\b/gi, REDACTED],
   [/\bAKIA[0-9A-Z]{16}\b/g, REDACTED],
   // key=value / password=value / token=value / secret=value (shell + query)

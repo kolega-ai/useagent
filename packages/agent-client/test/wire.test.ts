@@ -9,6 +9,7 @@ import {
   type ApiRunLifecycle,
   type ApiRunSummary,
   type ApiStep,
+  type GitLabRepositoryResource,
   RUN_STATUSES,
   STEP_KINDS,
 } from "../src/wire";
@@ -87,6 +88,14 @@ describe("run/step wire boundary decoders", () => {
     expect(decodeApiRun(run)).toEqual(run);
     expect(decodeApiRunSummary(summary)).toEqual(summary);
     expect(decodeApiStep(step)).toEqual(step);
+  });
+
+  test("decodes a GitLab repository without accepting a mismatched provider", () => {
+    const resource = { kind: "code.repository", provider: "gitlab", locator: {
+      type: "gitlab.repository", repository: "group/subgroup/repo", revision: null,
+    }, capabilities: ["content.read", "code.checkout"], provenance: [] } satisfies GitLabRepositoryResource;
+    expect(decodeApiRun({ ...run, resolved_resources: [resource] })?.resolved_resources).toEqual([resource]);
+    expect(decodeApiRun({ ...run, resolved_resources: [{ ...resource, provider: "github" }] })).toBeNull();
   });
 
   test("keeps a reported permission mode and rejects an unknown one", () => {

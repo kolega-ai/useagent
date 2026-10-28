@@ -2,6 +2,8 @@ import { resolveGithubAuth } from "../github/auth";
 import { listRepos, unknownRepos, type RepoListing } from "../github/repos";
 import { hasExactGitHubRepositoryUrlProvenance } from "./public-github";
 import { getRunForOrg } from "../runs/repo";
+import { gitLabToken } from "../gitlab/connection";
+import { gitLabProject } from "../gitlab/client";
 import type {
   ResourceAuthorization,
   ResourceAuthorizationDecision,
@@ -33,6 +35,7 @@ export interface RunResourceAuthorizationDependencies {
   ) => Promise<{ readonly headSha: string }>;
   readonly verifyPublicRepository?: (repository: string) => Promise<void>;
   readonly findThread?: (orgId: string, runId: string) => Promise<unknown | null>;
+  readonly verifyGitLabRepository?: (orgId: string, repository: string) => Promise<boolean>;
 }
 
 /** Server-side GitHub PR verification shared by every run ingress. */
@@ -118,6 +121,12 @@ export function createRunResourceAuthorization(
   const verifyPull = dependencies.verifyPullRequest ?? verifyGithubPullRequest;
   const verifyPublic = dependencies.verifyPublicRepository ?? verifyPublicGithubRepository;
   const findThread = dependencies.findThread ?? getRunForOrg;
+  const verifyGitLab = dependencies.verifyGitLabRepository ?? (async (id, repository) => {
+    const token = await gitLabToken(id);
+    if (!token) return false;
+    await gitLabProject(token, repository);
+    return true;
+  });
 
   return async (resource) => {
     if (resource.locator.type === "thread") {
@@ -134,6 +143,15 @@ export function createRunResourceAuthorization(
       return unavailable(
         `File resource ${resource.locator.id} is not materialized for run intake. Reattach the file and retry.`,
       );
+    }
+    if (resource.locator.type === "gitlab.repository") {
+      try {
+        return await verifyGitLab(orgId, resource.locator.repository)
+          ? { available: true, capabilities: ["content.read", "code.checkout"] }
+          : unavailable("GitLab is not connected for this organization.");
+      } catch {
+        return unavailable("This GitLab project is unavailable to the organization's connection.");
+      }
     }
     if (resource.provider !== "github") {
       return unavailable(

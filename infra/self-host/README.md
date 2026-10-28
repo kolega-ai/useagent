@@ -104,6 +104,34 @@ For Box and local images, use the provider's non-root workspace layout:
 `/home/user/work` must be writable by `user`, and a prepared checkout belongs at
 `/home/user/work/OWNER/REPO` with the clean GitHub origin.
 
+### Private GitLab.com projects
+
+An organization admin can connect GitLab.com in **Settings > Integrations**
+using a personal or group access token with the `api` scope. Use a dedicated
+token with access only to the projects the organization needs. UseAgent checks
+the token and stores it encrypted in the existing integration credential store;
+it is never sent to the browser after saving or placed in a sandbox.
+
+In a new thread, open **Repositories** and search for the project name, group,
+or subgroup. Results display the complete GitLab namespace so projects with
+the same name remain distinguishable. GitLab search also works while the full
+repository list is loading. Select a branch if needed and start the task as
+usual. Access is checked again when the thread prepares its workspace. The
+trusted backend creates a shallow checkout and transfers it into the sandbox;
+the compressed checkout must be at most 128 MiB. Custom repository images can
+be selected for GitLab projects just like GitHub projects.
+
+This integration supports GitLab.com, not self-managed GitLab instances. It
+does not yet create GitLab branches or merge requests: the GitLab credential
+stays in the control plane. To take changes out, ask the agent to create a
+patch containing the desired changes and include a Markdown link to the patch
+file in its final answer. UseAgent publishes the linked sandbox file as a
+downloadable artifact; apply it to your own checkout after reviewing it.
+Access is rechecked when each turn prepares a GitLab checkout, including a
+checkout already present in a repository image or retained sandbox. If the
+connection is revoked, reconnect it before continuing the thread; its retained
+files are not deleted.
+
 ### Preparing a Daytona repository snapshot
 
 Create a **cold filesystem snapshot** in the Daytona organization selected by

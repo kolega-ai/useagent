@@ -30,6 +30,7 @@ import { memoryRoutes } from "./memory/routes";
 import { commandsRoutes } from "./runs/command-catalog";
 import { createOperatorRoutes } from "./runs/operator-routes";
 import { reposRoutes } from "./github/routes";
+import { gitlabRoutes } from "./gitlab/routes";
 import { pullsRoutes } from "./github/pulls-routes";
 import { desktopProxyRoutes } from "./runs/desktop-proxy";
 import { parsePreviewViewPath } from "./runs/preview-capability";
@@ -481,6 +482,7 @@ app.route("/api/port-proxy", portProxyRoutes);
 // Real GitHub repository list for the New Task composer's repo picker. The
 // backend-held token stays server-side; unconfigured → {configured:false}.
 app.route("/api/repos", reposRoutes);
+app.route("/api/gitlab", gitlabRoutes);
 // Real open pull requests across the org's accessible repos - powers the
 // /review page. Org-scoped; the GitHub token stays server-side. Unconfigured →
 // {configured:false}; a failed fetch → {configured:true, error}.

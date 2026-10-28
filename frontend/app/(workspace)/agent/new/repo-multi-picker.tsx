@@ -12,6 +12,7 @@ import {
   CommandList,
 } from "@/components/base/command/command";
 import { Dropdown, DropdownPopover, DropdownTrigger } from "@/components/base/dropdown/dropdown";
+import { backendFetch } from "@/lib/backend-fetch";
 import { cx } from "@/utils/cx";
 
 export interface RepoItem {
@@ -27,6 +28,8 @@ export interface RepoMultiPickerProps {
   /** Selected full_names. */
   value: string[];
   onChange: (next: string[]) => void;
+  /** Preserve an asynchronously discovered repository in the caller's catalog. */
+  onDiscover?: (repo: RepoItem) => void;
   /** Override the trigger styling (e.g. render as a full-width menu row). */
   triggerClassName?: string;
   /** Trigger label when nothing is selected (defaults to "Repositories"). */
@@ -128,20 +131,53 @@ export function RepoMultiPicker({
   repos,
   value,
   onChange,
+  onDiscover,
   triggerClassName,
   emptyLabel,
 }: RepoMultiPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<string[]>([]);
+  const [remote, setRemote] = useState<RepoItem[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     setRecents(readRecents());
   }, []);
 
+  // Search GitLab at the provider while the full catalog is still loading and
+  // for projects beyond a bounded catalog. The query never contains a token.
+  useEffect(() => {
+    const value = query.trim();
+    if (!open || value.length < 2 || value.length > 100) { setRemote([]); setSearching(false); return; }
+    const controller = new AbortController();
+    setSearching(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await backendFetch(`/api/gitlab/projects?search=${encodeURIComponent(value)}`, { signal: controller.signal });
+          if (!response.ok) return;
+          const body = await response.json() as { repos?: unknown };
+          if (!Array.isArray(body.repos)) return;
+          const found = body.repos.flatMap((entry): RepoItem[] => {
+            if (!entry || typeof entry !== "object") return [];
+            const item = entry as Partial<RepoItem>;
+            if (typeof item.full_name !== "string" || !item.full_name.startsWith("gitlab.com/") || typeof item.name !== "string") return [];
+            return [{ full_name: item.full_name, name: item.name, default_branch: item.default_branch || "main", private: item.private }];
+          });
+          if (!controller.signal.aborted) setRemote(found);
+        } catch { /* A failed remote search leaves the local results available. */ }
+        finally { if (!controller.signal.aborted) setSearching(false); }
+      })();
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [open, query]);
+
   const selectedSet = useMemo(() => new Set(value), [value]);
 
   function toggle(fullName: string) {
+    const discovered = remote.find((repo) => repo.full_name === fullName);
+    if (!selectedSet.has(fullName) && discovered) onDiscover?.(discovered);
     const next = selectedSet.has(fullName)
       ? value.filter((r) => r !== fullName)
       : [...value, fullName];
@@ -163,11 +199,12 @@ export function RepoMultiPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return repos;
-    return repos.filter(
+    const combined = [...new Map([...repos, ...remote].map((repo) => [repo.full_name, repo])).values()];
+    if (!q) return combined;
+    return combined.filter(
       (r) => r.name.toLowerCase().includes(q) || r.full_name.toLowerCase().includes(q),
     );
-  }, [repos, query]);
+  }, [repos, remote, query]);
 
   // "Recent" section: recently-picked repos that still exist + match the search.
   const recentItems = useMemo(() => {
@@ -175,11 +212,15 @@ export function RepoMultiPicker({
     return recents.map((fn) => inFiltered.get(fn)).filter((r): r is RepoItem => Boolean(r));
   }, [recents, filtered]);
 
-  // "All repositories" grouped by org (owner), preserving encounter order.
+  // Show each GitLab namespace in full so projects with the same short name
+  // remain distinguishable, including projects in nested subgroups.
   const byOrg = useMemo(() => {
     const groups = new Map<string, RepoItem[]>();
     for (const r of filtered) {
-      const org = r.full_name.split("/")[0] || "repositories";
+      const parts = r.full_name.split("/");
+      const org = parts[0] === "gitlab.com"
+        ? `GitLab / ${parts.slice(1, -1).join("/")}`
+        : parts[0] || "repositories";
       const list = groups.get(org);
       if (list) list.push(r);
       else groups.set(org, [r]);
@@ -225,7 +266,7 @@ export function RepoMultiPicker({
           <CommandList className="max-h-[288px]" aria-multiselectable>
             {filtered.length === 0 ? (
               <div className="px-2 py-2 text-body-2-medium text-text-tertiary">
-                {repos.length === 0 ? "No repositories available" : "No results"}
+                {searching ? "Searching repositories..." : repos.length === 0 ? "No repositories available" : "No results"}
               </div>
             ) : (
               <>

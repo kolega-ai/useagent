@@ -44,6 +44,7 @@ import {
   slackNativeConnectionConfigFromEnv,
 } from "./slack-native-backend";
 import { publishOrgChange } from "../runs/org-signals";
+import { gitlabIntegrationBackend } from "../gitlab/integration-backend";
 
 export interface ExecutableIntegrationAction {
   readonly connectionId: string;
@@ -65,6 +66,7 @@ function defaultDependencies(): IntegrationServiceDependencies {
       (backend) => !(github && backend.provider === "github") && !(slack && backend.provider === "slack"),
     ),
     delegatedBackends: [
+      gitlabIntegrationBackend,
       ...(github ? [createGithubDelegatedConnectionBackend(github)] : []),
       ...(slack ? [createSlackDelegatedConnectionBackend(slack)] : []),
       ...(oomol ? [createOomolProjectConnectorBackend(oomol)] : []),
@@ -80,7 +82,7 @@ function ownerForRecord(record: { ownerType: "org" | "user"; ownerUserId: string
 }
 
 function integrationBackend(provider: string): IntegrationSummary["backend"] {
-  return provider === "github" || provider === "slack" ? "native" : "openconnector";
+  return provider === "github" || provider === "gitlab" || provider === "slack" ? "native" : "openconnector";
 }
 
 function connectionDegradationReason(status: IntegrationSummary["status"]): string | null {

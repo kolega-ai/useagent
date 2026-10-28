@@ -39,7 +39,11 @@ export function RepoBranchBar({
       attempted.current.add(repo.full_name);
       void (async () => {
         try {
-          const res = await backendFetch(`/api/repos/${repo.full_name}/branches`);
+          const gitlabPrefix = "gitlab.com/";
+          const path = repo.full_name.startsWith(gitlabPrefix)
+            ? `/api/gitlab/projects/${encodeURIComponent(repo.full_name.slice(gitlabPrefix.length))}/branches`
+            : `/api/repos/${repo.full_name}/branches`;
+          const res = await backendFetch(path);
           if (!res.ok) return;
           const data = (await res.json()) as { branches?: string[] };
           if (cancelled || !Array.isArray(data.branches)) return;

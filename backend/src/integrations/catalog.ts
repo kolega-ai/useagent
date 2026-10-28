@@ -16,6 +16,11 @@ export const INTEGRATION_CATALOG = [
     description: "Repository discovery, cloning, and pull request workflows.",
   },
   {
+    provider: "gitlab",
+    displayName: "GitLab",
+    description: "Discover and work on private GitLab.com repositories.",
+  },
+  {
     provider: "slack",
     displayName: "Slack",
     description: "Events, threads, files, and streaming cards.",

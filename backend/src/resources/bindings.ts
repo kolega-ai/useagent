@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parseRepoRef } from "../github/repo-ref";
+import { GITLAB_REPOSITORY_PREFIX } from "./gitlab-resolver";
 import type { RunResource } from "./types";
 
 function bindingKey(resource: RunResource): string {
@@ -8,6 +9,8 @@ function bindingKey(resource: RunResource): string {
       return `github:repository:${resource.locator.repository.toLowerCase()}:${resource.locator.revision ?? ""}`;
     case "github.pull_request":
       return `github:pull:${resource.locator.repository.toLowerCase()}:${resource.locator.number}:${resource.locator.revision ?? ""}`;
+    case "gitlab.repository":
+      return `gitlab:repository:${resource.locator.repository.toLowerCase()}:${resource.locator.revision ?? ""}`;
     case "thread":
       return `useagent:thread:${resource.locator.id}`;
     case "file":
@@ -34,12 +37,22 @@ export function resourcesWithLegacyRepositories(input: {
     resources.flatMap((resource) =>
       resource.locator.type === "github.repository"
         ? [resource.locator.repository.toLowerCase()]
+        : resource.locator.type === "gitlab.repository"
+          ? [`${GITLAB_REPOSITORY_PREFIX}${resource.locator.repository.toLowerCase()}`]
         : [],
     ),
   );
   for (const encoded of input.repos) {
     const { repo, branch } = parseRepoRef(encoded);
     if (present.has(repo.toLowerCase())) continue;
+    if (repo.startsWith(GITLAB_REPOSITORY_PREFIX)) {
+      resources.push({
+        kind: "code.repository", provider: "gitlab",
+        locator: { type: "gitlab.repository", repository: repo.slice(GITLAB_REPOSITORY_PREFIX.length), revision: branch },
+        capabilities: ["content.read", "code.checkout"], provenance: [],
+      });
+      continue;
+    }
     resources.push({
       kind: "code.repository",
       provider: "github",

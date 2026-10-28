@@ -9,6 +9,7 @@ import { SubscriptionLimitsCard } from "./subscription-limits-card";
 import { ComputerConnectionsCard } from "./computer-connections-card";
 import { GeneralCard } from "./general-card";
 import { IntegrationConnections } from "./integration-connections";
+import { GitLabConnection } from "./gitlab-connection";
 import { ProviderConnectionsCard } from "./provider-connections-card";
 import { RepositorySnapshots } from "./repository-snapshots";
 import { SandboxMinutesRow } from "./sandbox-minutes-row";
@@ -120,7 +121,8 @@ export default function SettingsPage() {
                 title="Integrations"
                 description="Connected tools agents can use for this workspace."
               >
-                <IntegrationConnections />
+                <IntegrationConnections excludeProviders={["gitlab"]} />
+                <GitLabConnection />
               </Section>
 
               {/* Usage */}
