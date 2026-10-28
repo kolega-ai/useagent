@@ -123,9 +123,10 @@ be selected for GitLab projects just like GitHub projects.
 This integration supports GitLab.com, not self-managed GitLab instances. It
 does not yet create GitLab branches or merge requests: the GitLab credential
 stays in the control plane. To take changes out, ask the agent to create a
-patch containing the desired changes and publish it as a downloadable
-artifact, then apply the patch to your own checkout. Review the patch before
-applying it. Replacing or disconnecting the token affects new checkouts, not
+patch containing the desired changes and include a Markdown link to the patch
+file in its final answer. UseAgent publishes the linked sandbox file as a
+downloadable artifact; apply it to your own checkout after reviewing it.
+Replacing or disconnecting the token affects new checkouts, not
 the files already retained in an existing thread's sandbox.
 
 ### Preparing a Daytona repository snapshot
