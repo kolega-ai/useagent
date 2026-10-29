@@ -25,6 +25,7 @@ import {
   clearMissingRetainedSandboxMappings,
   claimExpiredLeases,
   heartbeatLeases,
+  listCurrentRetainedSandboxMappings,
   releaseEmptyActiveLeasesOnBoot,
   releaseReclaimedLease,
   restoreLiveLease,
@@ -86,9 +87,12 @@ export async function reconcileRetainedSandboxMappings(
   provider: SandboxProvider,
   deploymentProviderKind: SandboxProviderKind,
 ): Promise<number> {
+  // Capture candidates before the remote listing: allocations made while the
+  // provider is paginating cannot be absent from an earlier snapshot.
+  const candidates = await listCurrentRetainedSandboxMappings();
   const liveSandboxIds = new Set<string>();
   for await (const sandbox of provider.list()) liveSandboxIds.add(sandbox.id);
-  return clearMissingRetainedSandboxMappings(liveSandboxIds, deploymentProviderKind);
+  return clearMissingRetainedSandboxMappings(liveSandboxIds, deploymentProviderKind, { candidates });
 }
 
 type ReleaseRetainedSandbox = (

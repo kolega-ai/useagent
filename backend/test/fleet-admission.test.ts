@@ -353,7 +353,7 @@ describe("durable admission — restart + crash recovery", () => {
   test("a successful provider listing clears missing retained mappings", async () => {
     const orgId = track(`org-${uid("stale-retained")}`);
     const runId = await accept(orgId);
-    await db.execute(sql`update runs set sandbox_id = 'missing-box' where id = ${runId}`);
+    await db.execute(sql`update runs set sandbox_id = 'missing-box', status = 'completed' where id = ${runId}`);
 
     const cleared = await reconcileRetainedSandboxMappings({
       create: async () => { throw new Error("unused"); },
@@ -363,6 +363,28 @@ describe("durable admission — restart + crash recovery", () => {
 
     expect(cleared).toBe(1);
     expect((await getRun(runId))?.sandboxId).toBeNull();
+  });
+
+  test("a listing cannot clear a new allocation or a sandbox with active work", async () => {
+    const orgId = track(`org-${uid("listing-race")}`);
+    const stale = await accept(orgId);
+    const active = await accept(orgId);
+    const createdDuringListing = await accept(orgId);
+    await db.execute(sql`update runs set sandbox_id = 'stale', status = 'completed' where id = ${stale}`);
+    await db.execute(sql`update runs set sandbox_id = 'active', status = 'running' where id = ${active}`);
+
+    const cleared = await reconcileRetainedSandboxMappings({
+      create: async () => { throw new Error("unused"); },
+      get: async () => { throw new Error("unused"); },
+      async *list() {
+        await db.execute(sql`update runs set sandbox_id = 'new', status = 'completed' where id = ${createdDuringListing}`);
+      },
+    }, "cube");
+
+    expect(cleared).toBe(1);
+    expect((await getRun(stale))?.sandboxId).toBeNull();
+    expect((await getRun(active))?.sandboxId).toBe("active");
+    expect((await getRun(createdDuringListing))?.sandboxId).toBe("new");
   });
 
   test("a partial provider listing preserves retained mappings", async () => {
@@ -389,10 +411,10 @@ describe("durable admission — restart + crash recovery", () => {
     const daytonaRun = await accept(orgId);
     const personalRun = await accept(orgId);
     const legacyRun = await accept(orgId);
-    await db.execute(sql`update runs set sandbox_id = 'missing-cube', sandbox_provider = 'cube', sandbox_credential = 'env' where id = ${cubeRun}`);
+    await db.execute(sql`update runs set sandbox_id = 'missing-cube', sandbox_provider = 'cube', sandbox_credential = 'env', status = 'completed' where id = ${cubeRun}`);
     await db.execute(sql`update runs set sandbox_id = 'retained-daytona', sandbox_provider = 'daytona', sandbox_credential = 'env' where id = ${daytonaRun}`);
     await db.execute(sql`update runs set sandbox_id = 'personal-cube', sandbox_provider = 'cube', sandbox_credential = 'user' where id = ${personalRun}`);
-    await db.execute(sql`update runs set sandbox_id = 'missing-legacy' where id = ${legacyRun}`);
+    await db.execute(sql`update runs set sandbox_id = 'missing-legacy', status = 'completed' where id = ${legacyRun}`);
 
     const cleared = await reconcileRetainedSandboxMappings({
       create: async () => { throw new Error("unused"); },

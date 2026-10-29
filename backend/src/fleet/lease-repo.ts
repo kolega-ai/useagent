@@ -182,22 +182,27 @@ export async function idleRetainedSandboxes(
 export async function clearMissingRetainedSandboxMappings(
   liveSandboxIds: ReadonlySet<string>,
   deploymentProviderKind: SandboxProviderKind,
-  exec: Executor = db,
+  options: { readonly exec?: Executor; readonly candidates?: readonly RetainedSandboxMapping[] } = {},
 ): Promise<number> {
-  const current = await listCurrentRetainedSandboxMappings(exec);
-  const missing = [...new Set(
-    current
-      .map((mapping) => mapping.sandboxId)
-      .filter((sandboxId) => !liveSandboxIds.has(sandboxId)),
-  )];
+  const exec = options.exec ?? db;
+  const current = options.candidates ?? await listCurrentRetainedSandboxMappings(exec);
+  const missing = current.filter((mapping) => !liveSandboxIds.has(mapping.sandboxId));
   if (missing.length === 0) return 0;
   const rows = await exec.execute(sql`
-    update runs
+    update runs as target
     set sandbox_id = null, updated_at = now()
-    where sandbox_id in (${sql.join(missing.map((id) => sql`${id}`), sql`, `)})
-      and (sandbox_credential is null or sandbox_credential = 'env')
-      and (sandbox_provider is null or sandbox_provider = ${deploymentProviderKind})
-    returning id`);
+    where (target.org_id, target.thread_id, target.sandbox_id) in (${sql.join(missing.map((mapping) => sql`(${mapping.orgId}, ${mapping.threadId}, ${mapping.sandboxId})`), sql`, `)})
+      and (target.sandbox_credential is null or target.sandbox_credential = 'env')
+      and (target.sandbox_provider is null or target.sandbox_provider = ${deploymentProviderKind})
+      and not exists (
+        select 1 from runs active where active.org_id = target.org_id and active.thread_id = target.thread_id
+          and active.status in ('queued', 'running')
+      )
+      and not exists (
+        select 1 from sandbox_leases lease where lease.org_id = target.org_id and lease.thread_id = target.thread_id
+          and lease.state in ('active', 'reclaiming')
+      )
+    returning target.id`);
   return rows.length;
 }
 
