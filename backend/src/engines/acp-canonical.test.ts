@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { acpSessionUpdate } from "./acp-canonical";
+import { acpSessionUpdate, createAcpSessionUpdateMapper } from "./acp-canonical";
 
 describe("ACP session updates", () => {
+  test("keeps id-less chunks together and separates text across tool calls", () => {
+    const map = createAcpSessionUpdateMapper("fallback");
+    const chunk = (value: string) => ({ sessionUpdate: "agent_message_chunk", content: { text: value } });
+    expect(map(chunk("Before "))[0]).toMatchObject({ messageId: "fallback-0", text: "Before " });
+    expect(map(chunk("work"))[0]).toMatchObject({ messageId: "fallback-0", text: "work" });
+    map({ sessionUpdate: "tool_call", toolCallId: "t", title: "Read" });
+    map({ sessionUpdate: "tool_call_update", toolCallId: "t", status: "completed" });
+    expect(map(chunk("After"))[0]).toMatchObject({ messageId: "fallback-1", text: "After" });
+    expect(map({ ...chunk("Native"), messageId: "native-id" })[0]).toMatchObject({ messageId: "native-id" });
+  });
   test("maps streamed text, reasoning, plans and commands", () => {
     expect(acpSessionUpdate({ sessionUpdate: "agent_message_chunk", messageId: "m", content: { type: "text", text: "hello" } }, "fallback"))
       .toEqual([{ kind: "message.delta", messageId: "m", text: "hello" }]);

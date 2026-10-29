@@ -4,7 +4,7 @@ import type { NativeBridgeFrameBody } from "@useagent/agent-harness/bridge";
 import { sandboxRuntimeLayout } from "../sandboxes/provider";
 import { providerGatewayWired } from "../provider-gateway/sandbox-config";
 import { acpApprovals } from "./acp-approvals";
-import { acpSessionUpdate } from "./acp-canonical";
+import { createAcpSessionUpdateMapper } from "./acp-canonical";
 import { acpProviderDriver, ACP_SESSION_GENERATION, closeAcpSandboxSessions, getAcpSession } from "./acp-provider-driver";
 import { prepareAcpRuntime } from "./acp-runtime-config";
 import { sessionCapabilities } from "./capabilities";
@@ -59,6 +59,7 @@ export const acpAdapter: EngineAdapter = {
         authorizeAutomation: codeSandboxPermission,
       }), (permission) => acpApprovals.acknowledge(permission));
       await recordProviderSessionStarted(ctx, established.session, { provider: "kolega", source: "kolega", resumed: established.resumed });
+      const mapUpdate = createAcpSessionUpdateMapper(`acp-message-${ctx.runId}`);
       const summary = await runNativeBridgeTurn({
         ctx, driver: acpProviderDriver, session: established.session, bridge,
         prompt: await composeRunTurnPrompt(ctx, established.resumed, executionCapabilities),
@@ -69,7 +70,7 @@ export const acpAdapter: EngineAdapter = {
             if (body.kind === "turn.completed") return [{ kind: "turn.completed" }];
             if (body.kind === "turn.failed") return [{ kind: "turn.failed", error: typeof body.error === "string" ? body.error : "Kolega Code failed" }];
           }
-          return acpSessionUpdate(frame, `acp-message-${ctx.runId}`);
+          return mapUpdate(frame);
         },
         redact: prepared.redact,
       });

@@ -40,7 +40,7 @@ export interface DiffTurn {
 export function timelineNodesForTurn(turn: DiffTurn): TimelineNode[] {
   if (turn.canonical && shouldUseCanonicalTimeline(CANONICAL_TIMELINE, turn)) {
     const stepsById = new Map(turn.steps.map((step) => [step.id, step]));
-    return buildTimelineFromCanonical(turn.canonical, stepsById, turn.live);
+    return buildTimelineFromCanonical(turn.canonical, stepsById, turn.live, turn.native);
   }
   const native = turn.native ? buildTimeline(turn.native, turn.live) : null;
   if (native) return native;

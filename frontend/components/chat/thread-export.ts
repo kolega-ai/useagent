@@ -35,6 +35,7 @@ function turnTimeline(turn: Turn, canonicalTimeline: boolean): TimelineNode[] | 
       turn.canonical,
       new Map(turn.steps.map((step) => [step.id, step])),
       turn.live,
+      turn.native,
     );
   }
   return turn.native ? buildTimeline(turn.native, turn.live) : null;

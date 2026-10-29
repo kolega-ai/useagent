@@ -127,6 +127,16 @@ export function splitTurn(nodes: readonly TimelineNode[], live: boolean): TurnSp
   };
 }
 
+/** Older bridge runs saved all narration as their summary. Recognize that exact
+ * shape so history shows the actual final message, while preserving genuinely
+ * different finalized summaries (for example artifact delivery links). */
+export function settledTimelineSummary(nodes: readonly TimelineNode[], summary: string | null): string | null {
+  if (!summary) return summary;
+  const messages = nodes.filter((node): node is Extract<TimelineNode, { kind: "text" }> => node.kind === "text");
+  if (messages.length < 2 || messages.map((node) => node.text).join("").trim() !== summary.trim()) return summary;
+  return splitTurn(nodes, false).reply ?? summary;
+}
+
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
 export type TraceRowStatus = "done" | "failed" | "running";

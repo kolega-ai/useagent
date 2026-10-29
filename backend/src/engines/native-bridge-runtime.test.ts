@@ -13,6 +13,51 @@ describe("native bridge turn settlement", () => {
   const mappedBodies = (frame: unknown): readonly NativeBridgeFrameBody[] =>
     (frame as { bodies?: readonly NativeBridgeFrameBody[] }).bodies ?? [];
 
+  test("anchors streamed messages and tool starts while returning only the final message", async () => {
+    const captured: ProviderEventInput[] = [];
+    const deltas: string[] = [];
+    let listener: ((frame: unknown) => void) | undefined;
+    const summary = await runNativeBridgeTurn({
+      ctx: {
+        runId: "run", threadId: "thread", signal: new AbortController().signal,
+        emit: async () => "step", updateStep: async () => {},
+        publishDelta: (text: string) => deltas.push(text),
+      } as never,
+      driver: {
+        provider: "kolega",
+        steer: async () => {
+          listener?.({ bodies: [
+            { kind: "message.delta", messageId: "first", text: "Reading " },
+            { kind: "message.delta", messageId: "first", text: "now." },
+            { kind: "message.authoritative", messageId: "first", text: "Reading now." },
+            { kind: "tool.started", toolCallId: "call", name: "read" },
+            { kind: "tool.started", toolCallId: "call", name: "read" },
+            { kind: "tool.completed", toolCallId: "call", status: "ok" },
+            { kind: "message.delta", messageId: "last", text: "All " },
+            { kind: "message.delta", messageId: "last", text: "done." },
+            { kind: "turn.completed" },
+          ] });
+          return { status: "ok" };
+        },
+        cancel: async () => ({ status: "ok" }),
+      } as never,
+      session: { nativeSessionId: "session" } as never,
+      bridge: { sessionFile: "/session", subscribe: (next) => { listener = next; return () => {}; } },
+      prompt: "work", mapFrame: mappedBodies,
+      redact: { text: (value) => value, unknown: (value) => value },
+    }, async (event) => { captured.push(event); });
+
+    expect(summary).toBe("All done.");
+    expect(deltas).toEqual(["Reading ", "now.", "All ", "done."]);
+    expect(captured.filter((event) => event.eventType === "part.step-start").map((event) => event.nativeMessageId)).toEqual(["first", "last"]);
+    const anchor = captured.find((event) => event.eventType === "part.tool.started");
+    const completed = captured.find((event) => event.eventType === "part.tool.completed");
+    expect(anchor?.nativeCallId).toBe("call");
+    expect(captured.filter((event) => event.eventType === "part.tool.started")).toHaveLength(1);
+    expect(anchor?.id).not.toBe(completed?.id);
+    expect(captured.indexOf(anchor!)).toBeLessThan(captured.findIndex((event) => event.nativeMessageId === "last"));
+  });
+
   test("provider failure cannot finalize as success", () => {
     expect(nativeBridgeSettlement({ kind: "turn.failed", error: "upstream failed" })).toEqual({
       status: "failed",
@@ -158,12 +203,16 @@ describe("native bridge turn settlement", () => {
     expect(summary).toBe("parent final");
     expect(reconciled).toBe(true);
     expect(captured.map((event) => [event.eventType, event.nativeSessionId])).toEqual([
+      ["part.step-start", "child-a"],
+      ["part.step-text-start", "child-a"],
       ["part.text", "child-a"],
       ["part.subtask.completed", "parent"],
+      ["part.step-start", "parent"],
+      ["part.step-text-start", "parent"],
       ["part.text", "parent"],
       ["pi.turn.completed", "parent"],
     ]);
-    expect(captured[1]?.payload).toMatchObject({ transcript: { status: "complete" } });
+    expect(captured[3]?.payload).toMatchObject({ transcript: { status: "complete" } });
   });
 
   test("records redacted transcript failure evidence without failing the parent", async () => {

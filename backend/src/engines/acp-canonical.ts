@@ -90,3 +90,21 @@ export function acpSessionUpdate(value: unknown, fallbackMessageId: string): rea
   }
   return [{ kind: "tool.progress", toolCallId, name, input, preview }];
 }
+
+/** Some ACP agents omit messageId. Separate their text bursts at tool-call
+ * boundaries while keeping chunks within one burst on the same message. */
+export function createAcpSessionUpdateMapper(fallbackPrefix: string): (value: unknown) => readonly NativeBridgeFrameBody[] {
+  let index = 0;
+  let sawText = false;
+  let afterTool = false;
+  return (value) => {
+    const update = object(value);
+    if (update?.sessionUpdate === "tool_call" && sawText) afterTool = true;
+    if (update?.sessionUpdate === "agent_message_chunk" && text(object(update.content)?.text)) {
+      if (afterTool) index++;
+      sawText = true;
+      afterTool = false;
+    }
+    return acpSessionUpdate(value, `${fallbackPrefix}-${index}`);
+  };
+}
