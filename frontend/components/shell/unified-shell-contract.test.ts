@@ -50,7 +50,7 @@ describe("unified shell contract", () => {
     expect(appShell.indexOf("<SidebarThreadsProvider>")).toBeLessThan(appShell.indexOf("{panel}"));
   });
 
-  test("limits primary sidebar navigation to projects, threads, customize, and the account menu", () => {
+  test("keeps project threads and automations in the sidebar alongside primary navigation", () => {
     const { threadSidebar, sidebarFrame } = shellSources();
     const projectTree = read("../session-ui/project-thread-tree.tsx");
     const userMenu = read("./user-menu.tsx");
@@ -61,7 +61,6 @@ describe("unified shell contract", () => {
       "Workspace",
       "Active runs",
       "Live Artifacts",
-      "Automations",
       "Plugins",
       "Knowledge",
       "Wiki",
@@ -76,6 +75,8 @@ describe("unified shell contract", () => {
     for (const label of displacedDestinations) {
       expect(threadSidebar).not.toContain(`title: "${label}"`);
     }
+    expect(threadSidebar).toContain("<SidebarAutomations />");
+    expect(threadSidebar).toContain('title: "Automations"');
     // Settings moved into the account menu behind the footer card.
     expect(userMenu).toContain("Settings");
     expect(sidebarFrame).toContain("<UserMenu");

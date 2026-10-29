@@ -5,6 +5,7 @@ import {
   RiBook3Line,
   RiBookShelfLine,
   RiBroadcastLine,
+  RiCalendarScheduleLine,
   RiChat3Line,
   RiDashboardLine,
   RiDatabase2Line,
@@ -17,6 +18,7 @@ import { usePathname } from "next/navigation";
 import { chatTitle } from "@/components/shell/chat-title";
 import { useRailFolded } from "@/components/shell/rail-folded";
 import { SidebarBookmarks } from "@/components/shell/sidebar-bookmarks";
+import { CollapsedSidebarAutomations, SidebarAutomations } from "@/components/shell/sidebar-automations";
 import {
   SidebarGroup,
   SidebarMenu,
@@ -104,6 +106,13 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
       active: current === "dashboard",
       trailing: <WorkingProjectStatus />,
     },
+    ...(isCollapsed ? [{
+      id: "automations",
+      title: "Automations",
+      icon: RiCalendarScheduleLine,
+      href: "/agent/automations",
+      active: pathname === "/agent/automations",
+    }] : []),
     ...(catalog?.bots
       ? [
           {
@@ -149,10 +158,14 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
     <AppSidebarFrame>
       <NavRoutes routes={routes} />
       {isCollapsed ? (
-        <CollapsedThreads />
+        <>
+          <CollapsedSidebarAutomations />
+          <CollapsedThreads />
+        </>
       ) : (
         <>
           <SidebarBookmarks />
+          <SidebarAutomations />
           <SidebarProjects />
         </>
       )}

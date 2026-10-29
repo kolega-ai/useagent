@@ -11,12 +11,21 @@ import {
   type ScheduleTrigger,
 } from "../db/schema";
 import { nextOccurrence } from "./cron";
+import { AUTOMATION_RUN_ORIGIN, BOT_HANDOFF_RUN_ORIGIN } from "../runs/origin";
 
 // ---------------------------------------------------------------------------
 // API serialization — snake_case wire contract, matching the runs/skills style.
 // ---------------------------------------------------------------------------
 
 export type ScheduleRecord = typeof schedules.$inferSelect;
+
+/** Compact firing data for the sidebar; full history stays on the history route. */
+export interface ApiRecentFiring {
+  run_id: string;
+  fired_at: string;
+  trigger: ScheduleTrigger;
+  run_status: typeof runs.$inferSelect.status;
+}
 
 export interface ApiSchedule {
   id: string;
@@ -55,6 +64,8 @@ export interface ApiSchedule {
   /** When it last actually ran, by any trigger (cron or Run now): the newest
    *  firing in the log, falling back to last_fired_at. What a card shows. */
   last_run_at: string | null;
+  /** Bounded, live run links, included on the list response. */
+  recent_firings?: ApiRecentFiring[];
   created_at: string;
   updated_at: string;
 }
@@ -146,12 +157,33 @@ export async function listSchedules(orgId: string): Promise<ApiSchedule[]> {
   const lastRunAt = sql<Date | null>`(
     select max(f.fired_at) from schedule_firings f where f.schedule_id = schedules.id
   )`.mapWith(scheduleFirings.firedAt);
+  // Read a bounded set for navigation without fetching each schedule's full
+  // history. Active firings stay visible ahead of settled firings.
+  const recentFirings = sql<ApiRecentFiring[]>`(
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'run_id', recent.run_id, 'fired_at', recent.fired_at,
+      'trigger', recent.trigger, 'run_status', recent.run_status
+    ) order by recent.active desc, recent.fired_at desc, recent.id desc), '[]'::jsonb)
+    from (
+      select f.id, f.run_id, f.fired_at, f.trigger, r.status as run_status,
+        (r.status in ('queued', 'running')) as active
+      from schedule_firings f
+      inner join runs r on r.id = f.run_id and r.org_id = schedules.org_id
+      where f.schedule_id = schedules.id
+        and (r.origin is null or r.origin in (${AUTOMATION_RUN_ORIGIN}, ${BOT_HANDOFF_RUN_ORIGIN}))
+      order by active desc, f.fired_at desc, f.id desc
+      limit 6
+    ) recent
+  )`;
   const rows = await db
-    .select({ schedule: schedules, lastRunAt })
+    .select({ schedule: schedules, lastRunAt, recentFirings })
     .from(schedules)
     .where(eq(schedules.orgId, orgId))
     .orderBy(desc(schedules.createdAt), desc(schedules.id));
-  return rows.map((row) => toSchedule(row.schedule, row.lastRunAt));
+  return rows.map((row) => ({
+    ...toSchedule(row.schedule, row.lastRunAt),
+    recent_firings: row.recentFirings.map((firing) => ({ ...firing, fired_at: new Date(firing.fired_at).toISOString() })),
+  }));
 }
 
 /** Org-scoped fetch — a cross-org (or missing) id resolves to null (→ 404). */
