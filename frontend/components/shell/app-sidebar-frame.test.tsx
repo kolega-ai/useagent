@@ -12,6 +12,7 @@ import { TooltipProvider } from "@/components/sidebar-kit/tooltip";
 import { AppShell } from "./app-shell";
 import { AppSidebarFrame, NavRoutes } from "./app-sidebar-frame";
 import { SidebarThreadsProvider } from "./sidebar-threads-provider";
+import { CollapsedAutomationRuns } from "./sidebar-automations";
 import { ThreadSidebar } from "./thread-sidebar";
 import { sessionUserProfile } from "./user-menu";
 
@@ -63,6 +64,22 @@ describe("collapsed application sidebar", () => {
 
   test("does not advertise Bots before the capability catalog loads", () => {
     expect(renderCollapsed(<ThreadSidebar active="bots" />)).not.toContain('href="/bots"');
+  });
+
+  test("keeps automations reachable when the rail is collapsed", () => {
+    const html = renderCollapsed(<ThreadSidebar />);
+    expect(html).toContain('href="/agent/automations"');
+    expect(html).toContain('aria-label="Automations"');
+  });
+
+  test("links a running automation directly from the collapsed rail", () => {
+    const html = renderCollapsed(<CollapsedAutomationRuns pathname="/session/run-1" automations={[{
+      id: "a1", name: "Catalog refresh", created_at: "2026-10-01T12:00:00Z", last_run_at: "2026-10-29T12:00:00Z",
+      recent_firings: [{ run_id: "run-1", fired_at: "2026-10-29T12:00:00Z", trigger: "manual", run_status: "running" }],
+    }]} />);
+    expect(html).toContain('href="/session/run-1"');
+    expect(html).toContain('aria-label="Catalog refresh, Running"');
+    expect(html).toContain('aria-current="page"');
   });
 
   test("uses one main landmark for the bounded page scroll area", () => {

@@ -341,6 +341,12 @@ describe("schedules API", () => {
     );
     expect(mine?.last_fired_at).toBeNull();
     expect(mine?.last_run_at).toBe(firing.fired_at);
+    expect(mine?.recent_firings).toEqual([{
+      run_id: runId,
+      fired_at: firing.fired_at,
+      trigger: "manual",
+      run_status: "completed",
+    }]);
   });
 
   test("run-now fails before persistence when a linked resource is unavailable", async () => {

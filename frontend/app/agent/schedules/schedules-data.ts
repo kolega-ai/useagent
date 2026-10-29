@@ -1,4 +1,4 @@
-import { ENGINES } from "@/components/chat/types";
+import { ENGINES, type RunStatus } from "@/components/chat/types";
 import type { DotTone } from "@/components/shared/status-dot";
 
 /**
@@ -22,6 +22,14 @@ export function engineLabel(engine: string): string {
 export interface AutomationEngineOption {
   id: string;
   label: string;
+}
+
+/** A bounded run link from the automation list; older servers omit it. */
+export interface RecentAutomationFiring {
+  readonly run_id: string;
+  readonly fired_at: string;
+  readonly trigger: "cron" | "manual";
+  readonly run_status: RunStatus;
 }
 
 /** Project the server-enabled ids through chat's current engine catalog. */
@@ -85,6 +93,7 @@ export interface ScheduleRecord {
   last_fired_at: string | null;
   /** When it last ran by any trigger, cron or Run now (newest firing in the log). */
   last_run_at: string | null;
+  recent_firings?: RecentAutomationFiring[];
   created_at: string;
   updated_at: string;
 }
