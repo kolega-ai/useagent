@@ -6,7 +6,7 @@ import { integrationConnections } from "../db/schema";
 import { findConnectedOrgIntegrationRecord, findLatestOrgIntegrationRecord } from "../integrations/connection-repo";
 import { deleteIntegrationCredential, readIntegrationCredential, upsertIntegrationCredential } from "../integrations/credential-repo";
 import { asOrgAdmin } from "../provider-connections/repo";
-import { gitLabRequest } from "./client";
+import { clearGitLabProjectCache, gitLabRequest } from "./client";
 import { publishOrgChange } from "../runs/org-signals";
 
 export const GITLAB_CONNECTION_BINDING = "gitlab.com-token-v1";
@@ -54,7 +54,10 @@ export async function connectGitLab(orgId: string, userId: string, token: string
     await upsertIntegrationCredential({ connectionId: row.id, orgId, provider: "gitlab", externalConnectionId }, { format: FORMAT, serialized: secret }, tx);
     return row.id;
   }));
-  if (outcome) publishOrgChange(orgId, { type: "integration_connection", action: "updated", connectionId: outcome.value, provider: "gitlab" });
+  if (outcome) {
+    clearGitLabProjectCache();
+    publishOrgChange(orgId, { type: "integration_connection", action: "updated", connectionId: outcome.value, provider: "gitlab" });
+  }
   return outcome !== null;
 }
 
@@ -67,6 +70,9 @@ export async function disconnectGitLab(orgId: string, userId: string): Promise<b
     if (row) await deleteIntegrationCredential(row.id, tx);
     return row?.id ?? null;
   }));
-  if (outcome?.value) publishOrgChange(orgId, { type: "integration_connection", action: "revoked", connectionId: outcome.value, provider: "gitlab" });
+  if (outcome?.value) {
+    clearGitLabProjectCache();
+    publishOrgChange(orgId, { type: "integration_connection", action: "revoked", connectionId: outcome.value, provider: "gitlab" });
+  }
   return outcome !== null;
 }

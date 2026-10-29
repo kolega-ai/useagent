@@ -350,6 +350,20 @@ export interface GithubConfig {
   owner: string | null;
 }
 
+/** Optional deployment-wide filter for GitHub repository discovery. */
+export function githubAllowedOwners(): ReadonlySet<string> | null {
+  const raw = process.env.GITHUB_ALLOWED_OWNERS?.trim();
+  if (!raw) return null;
+  return new Set(raw.split(",").map((owner) => owner.trim().toLowerCase()).filter(Boolean));
+}
+
+/** Optional GitLab namespaces omitted from repository discovery. */
+export function gitlabExcludedGroups(): readonly string[] {
+  return (process.env.GITLAB_EXCLUDED_GROUPS ?? "").split(",")
+    .map((group) => group.trim().replace(/^gitlab\.com\//i, "").replace(/\/+$/, "").toLowerCase())
+    .filter(Boolean);
+}
+
 export function githubConfig(): GithubConfig {
   const token =
     process.env.GITHUB_TOKEN?.trim() ||
