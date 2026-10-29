@@ -3,23 +3,25 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../src/db/client";
 import { markForRetry, type OutboxTable } from "../src/db/outbox";
 import { member } from "../src/db/auth-schema";
-import { automationCodeActions, runs, schedules } from "../src/db/schema";
+import { automationCodeActions, commands, runs, schedules } from "../src/db/schema";
+import type { AutomationCodePolicy } from "../src/db/schema/schedules";
 import { explicitRepositoryResources, resolveRunIntake } from "../src/resources/run-intake";
 import { acceptRunCancel } from "../src/commands/cancel";
 import { CodeActionAuthorityError, assertCodeActionAuthorized, attachCodeAction, codeSandboxPermission,
-  getCodeAction, recordCodeActionOutcome, selectCodeAction } from "../src/schedules/code-actions-repo";
-import { drainCodeActions, executeCodeAction } from "../src/schedules/code-actions-worker";
+  getCodeAction, recordCodeActionOutcome, selectCodeAction, settleCodeAction } from "../src/schedules/code-actions-repo";
+import { drainCodeActions, executeCodeAction, resetStuckCodeActions } from "../src/schedules/code-actions-worker";
 import { getScheduleForOrg, updateSchedule } from "../src/schedules/repo";
 import { createOrgSession, fetchApi, json, userIdOf, waitFor } from "./helpers";
 
 const policy = { version: 1 as const, mode: "publish" as const, repository: "owner/repo", draft: true, allowSandboxActions: true };
+const directPolicy = { version: 2 as const, mode: "agent" as const, repository: "owner/repo", draft: false as const, allowSandboxActions: true };
 
-async function fixture(attach = true) {
+async function fixture(attach = true, selectedPolicy: AutomationCodePolicy = policy) {
   const session = await createOrgSession("auto-code");
   const userId = await userIdOf(session);
   const [schedule] = await db.insert(schedules).values({ orgId: session.orgId, userId, name: "Code action", cron: "0 9 * * *",
-    timezone: "UTC", prompt: "Make a small change", engine: "kolega", model: "deepseek/deepseek-flash", repos: [policy.repository], codePolicy: policy }).returning();
-  const intake = await resolveRunIntake({ source: "automation", text: "", explicitResources: explicitRepositoryResources([policy.repository]) },
+    timezone: "UTC", prompt: "Make a small change", engine: "kolega", model: "deepseek/deepseek-flash", repos: [selectedPolicy.repository], codePolicy: selectedPolicy }).returning();
+  const intake = await resolveRunIntake({ source: "automation", text: "", explicitResources: explicitRepositoryResources([selectedPolicy.repository]) },
     { authorize: async () => ({ available: true, capabilities: ["content.read", "code.checkout"] }) });
   const key = `fixture:${crypto.randomUUID()}`;
   const action = await selectCodeAction(schedule!, key, new AbortController().signal);
@@ -32,11 +34,56 @@ async function fixture(attach = true) {
 }
 
 describe("unattended repository actions", () => {
+  test("an agent-managed firing finishes without queuing a backend publication", async () => {
+    const f = await fixture(true, directPolicy);
+    expect(f.action.target).toBeNull();
+    expect(await codeSandboxPermission(f.runId, f.runId)).toBe(true);
+    expect(await codeSandboxPermission(f.runId, f.runId, "other")).toBe(true);
+    await db.transaction((tx) => settleCodeAction(f.runId, "completed", tx));
+    expect(await getCodeAction(f.key)).toMatchObject({ state: "done", resultReason: "The agent completed the run.", resultUrl: null });
+    await drainCodeActions();
+    expect((await getCodeAction(f.key))?.state).toBe("done");
+  });
+
+  test("attachment and crash recovery settle an agent-managed run without publication", async () => {
+    const beforeAttach = await fixture(false, directPolicy);
+    await db.update(runs).set({ status: "completed" }).where(eq(runs.id, beforeAttach.runId));
+    await attachCodeAction(beforeAttach.key, beforeAttach.runId);
+    expect(await getCodeAction(beforeAttach.key)).toMatchObject({ state: "done", resultReason: "The agent completed the run." });
+
+    const crashed = await fixture(false, directPolicy);
+    await db.update(runs).set({ status: "completed" }).where(eq(runs.id, crashed.runId));
+    await db.insert(commands).values({ id: crypto.randomUUID(), orgId: crashed.session.orgId, idempotencyKey: crashed.key,
+      kind: "run.create", runId: crashed.runId, state: "completed" });
+    await resetStuckCodeActions();
+    expect(await getCodeAction(crashed.key)).toMatchObject({ runId: crashed.runId, state: "done", resultReason: "The agent completed the run." });
+  });
+
+  test("an approval arriving before firing attachment recovers its durable binding", async () => {
+    const f = await fixture(false, directPolicy);
+    await db.insert(commands).values({ id: crypto.randomUUID(), orgId: f.session.orgId, idempotencyKey: f.key,
+      kind: "run.create", runId: f.runId, state: "dispatched" });
+    expect(await codeSandboxPermission(f.runId, f.runId)).toBe(true);
+    expect(await getCodeAction(f.key)).toMatchObject({ runId: f.runId, state: "waiting" });
+    await attachCodeAction(f.key, f.runId);
+  });
+
+  test("a failed agent-managed run and a stray worker claim cannot publish", async () => {
+    const failed = await fixture(true, directPolicy);
+    await db.transaction((tx) => settleCodeAction(failed.runId, "failed", tx));
+    expect((await getCodeAction(failed.key))?.state).toBe("dead");
+    const stray = await fixture(true, directPolicy);
+    await db.update(automationCodeActions).set({ state: "processing", claimToken: crypto.randomUUID() }).where(eq(automationCodeActions.idempotencyKey, stray.key));
+    await executeCodeAction((await getCodeAction(stray.key))!, new AbortController().signal);
+    expect((await getCodeAction(stray.key))?.state).toBe("dead");
+  });
+
   test("the per-firing selection is durable and sandbox access is bound to its owner and run", async () => {
     const f = await fixture();
     const again = await selectCodeAction(f.schedule, f.key, new AbortController().signal);
     expect(again?.runId).toBe(f.runId);
     expect(await codeSandboxPermission(f.runId, f.runId)).toBe(true);
+    expect(await codeSandboxPermission(f.runId, f.runId, "other")).toBe(false);
     expect(await codeSandboxPermission(f.runId, "another-thread")).toBe(false);
     await db.update(runs).set({ userId: "another-user" }).where(eq(runs.id, f.runId));
     expect(await codeSandboxPermission(f.runId, f.runId)).toBe(false);

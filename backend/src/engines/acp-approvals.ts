@@ -41,7 +41,7 @@ export class AcpApprovals {
     readonly permission: AcpPermission;
     readonly permissionMode: PermissionMode;
     readonly redact: Pick<SecretRedactor, "text">;
-    readonly authorizeAutomation?: (runId: string, threadId: string) => Promise<boolean>;
+    readonly authorizeAutomation?: (runId: string, threadId: string, kind: RuntimeApprovalRequest["requestKind"]) => Promise<boolean>;
   }): Promise<string | null> {
     const requestKind = approvalKind(input.permission.toolCall);
     const tool = input.permission.toolCall as { title?: unknown } | null;
@@ -66,8 +66,8 @@ export class AcpApprovals {
       throw error;
     }
     const allowOnce = input.permission.options.find((option) => option.kind === "allow_once");
-    const autoAllowed = allowOnce && requestKind !== "other" && input.authorizeAutomation
-      ? await input.authorizeAutomation(input.runId, input.threadId).catch(() => false) : false;
+    const autoAllowed = allowOnce && input.authorizeAutomation
+      ? await input.authorizeAutomation(input.runId, input.threadId, requestKind).catch(() => false) : false;
     const pending = this.pending.get(request.id);
     if (autoAllowed && allowOnce && pending && !pending.claimed) {
       pending.claimed = true;

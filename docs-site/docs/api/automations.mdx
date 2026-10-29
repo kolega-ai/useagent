@@ -42,6 +42,13 @@ when the cron names no date.
 | GET | `/api/automations/:id/history` | Firing history, newest first. | `{firings}`. `404 schedule not found`. |
 | DELETE | `/api/automations/:id` | Delete an automation and its firing rows. | `204`. Runs from past firings remain in the durable run log. `403 automation_creator_only` for anyone but the creator or an admin. |
 
+For direct agent-managed repository work, send `repos` with the selected
+repository and `codePolicy` as `{ "version": 2, "mode": "agent", "repository":
+"OWNER/REPO", "draft": false, "allowSandboxActions": true }`. The agent uses
+the connected personal credentials inside its sandbox; no backend publication
+decision is requested. Existing version 1 `publish` and `review` policies stay
+supported for previously configured automations.
+
 ## Secrets
 
 Encrypted named secrets injected as env vars into the per-thread sandbox at boot.

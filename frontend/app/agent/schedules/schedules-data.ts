@@ -88,12 +88,15 @@ export interface ScheduleRecord {
   updated_at: string;
 }
 
-export interface AutomationCodePolicy {
-  version: 1;
-  mode: "publish" | "review";
+export type AutomationCodePolicy = {
   repository: string;
   draft: boolean;
   allowSandboxActions: boolean;
+} & ({ version: 1; mode: "publish" | "review" } | { version: 2; mode: "agent"; draft: false });
+
+/** A change notification can refresh the list before the create request returns. */
+export function addCreatedAutomation(previous: readonly ScheduleRecord[] | null, created: ScheduleRecord): ScheduleRecord[] {
+  return [created, ...(previous ?? []).filter((item) => item.id !== created.id)];
 }
 
 /** The moment an automation last ran, whichever trigger fired it. */

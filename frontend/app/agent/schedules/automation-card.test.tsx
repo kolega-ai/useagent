@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AutomationCard } from "./automation-card";
-import { lastRunAt, type ScheduleRecord } from "./schedules-data";
+import { addCreatedAutomation, lastRunAt, type ScheduleRecord } from "./schedules-data";
 
 function schedule(overrides: Partial<ScheduleRecord> = {}): ScheduleRecord {
   return {
@@ -57,4 +57,18 @@ test("a manual Run now counts as the last run even when the cron guard was never
   expect(render(schedule({ last_run_at: recent }))).toContain("Ran ");
   expect(render(schedule({ last_run_at: recent }))).not.toContain("Not run yet");
   expect(render(schedule())).toContain("Not run yet");
+});
+
+test("agent-managed repository work is labeled without claiming a publication", () => {
+  const markup = render(schedule({ code_policy: { version: 2, mode: "agent", repository: "owner/repo", draft: false, allowSandboxActions: true } }));
+  expect(markup).toContain("Repository work");
+  expect(markup).not.toContain("Opens changes");
+  expect(markup).not.toContain("Reviews and merges");
+});
+
+test("creation does not duplicate a schedule already received in a change notification", () => {
+  const created = schedule();
+  const other = schedule({ id: "auto-2" });
+  expect(addCreatedAutomation([created, other], created)).toEqual([created, other]);
+  expect(addCreatedAutomation([other], created)).toEqual([created, other]);
 });

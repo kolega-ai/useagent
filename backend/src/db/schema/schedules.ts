@@ -25,14 +25,14 @@ import { githubChangeSets } from "./github-publication";
 /** How a firing was triggered: the cron loop, or a manual "run now". */
 export type ScheduleTrigger = "cron" | "manual";
 export type AutomationJson = Record<string, unknown>;
-/** Explicit, repository-bound authority granted by an automation's owner. */
+/** Repository context and execution permission for an automation. Version 1
+ * remains readable for previously configured control-plane actions. */
 export type AutomationCodePolicy = {
-  readonly version: 1;
-  readonly mode: "publish" | "review";
   readonly repository: string;
   readonly draft: boolean;
   readonly allowSandboxActions: boolean;
-};
+} & ({ readonly version: 1; readonly mode: "publish" | "review" } |
+  { readonly version: 2; readonly mode: "agent"; readonly draft: false });
 
 export const schedules = pgTable(
   "schedules",

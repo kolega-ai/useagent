@@ -1,12 +1,13 @@
 // Durable per-firing selections and the trusted authority for code effects.
 import { createHash } from "node:crypto";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
-import { automationCodeActions, member, runs, schedules } from "../db/schema";
+import { automationCodeActions, commands, member, runs, schedules } from "../db/schema";
 import { stableJson } from "../github/publication-repo-input";
 import type { ScheduleRecord } from "./repo";
 import { findReviewTarget, reviewKey } from "./code-review-provider";
 import { assertCodePolicyEngine, assertCodePolicyRepository } from "./code-policy";
+import type { RuntimeApprovalRequest } from "../engines/runtime-approval";
 
 export type CodeActionRecord = typeof automationCodeActions.$inferSelect;
 export class CodeActionAuthorityError extends Error {
@@ -83,9 +84,9 @@ export async function attachCodeAction(key: string, runId: string): Promise<void
         run.origin !== "product:automation") throw new Error("Automation action run identity mismatch.");
     if (existing.runId === runId) return;
     if (existing.runId || existing.state !== "selected") throw new Error("Automation action run identity mismatch.");
-    const state = run.status === "completed" ? "pending" : run.status === "failed" ? "dead" : "waiting";
+    const state = run.status === "completed" ? existing.policy.mode === "agent" ? "done" : "pending" : run.status === "failed" ? "dead" : "waiting";
     const [row] = await tx.update(automationCodeActions).set({ runId, state,
-      resultReason: state === "dead" ? "The automation run did not complete." : null, updatedAt: new Date() })
+      resultReason: state === "dead" ? "The automation run did not complete." : state === "done" ? "The agent completed the run." : null, updatedAt: new Date() })
       .where(and(eq(automationCodeActions.idempotencyKey, key), eq(automationCodeActions.state, "selected")))
       .returning({ runId: automationCodeActions.runId });
     if (row?.runId !== runId) throw new Error("Automation action run identity mismatch.");
@@ -94,8 +95,10 @@ export async function attachCodeAction(key: string, runId: string): Promise<void
 
 /** Settle in the same transaction as the run; failed/cancelled runs cannot publish. */
 export async function settleCodeAction(runId: string, status: "completed" | "failed", exec: Executor): Promise<void> {
-  await exec.update(automationCodeActions).set({ state: status === "completed" ? "pending" : "dead",
-    resultReason: status === "completed" ? null : "The automation run did not complete.", updatedAt: new Date() })
+  await exec.update(automationCodeActions).set({
+    state: status === "completed" ? sql`case when ${automationCodeActions.policy}->>'mode' = 'agent' then 'done' else 'pending' end` : "dead",
+    resultReason: status === "completed" ? sql`case when ${automationCodeActions.policy}->>'mode' = 'agent' then 'The agent completed the run.' else null end` : "The automation run did not complete.",
+    updatedAt: new Date() })
     .where(and(eq(automationCodeActions.runId, runId), eq(automationCodeActions.state, "waiting")));
 }
 
@@ -135,11 +138,23 @@ export async function assertCodeActionAuthorized(action: CodeActionRecord, exec:
 }
 
 /** Only an explicitly opted-in, still-authorized firing can approve sandbox work. */
-export async function codeSandboxPermission(runId: string, threadId: string): Promise<boolean> {
-  const [action] = await db.select().from(automationCodeActions).where(and(
+export async function codeSandboxPermission(runId: string, threadId: string, kind: RuntimeApprovalRequest["requestKind"] = "command"): Promise<boolean> {
+  const readAction = async () => (await db.select().from(automationCodeActions).where(and(
     eq(automationCodeActions.runId, runId), eq(automationCodeActions.state, "waiting"),
-  )).limit(1);
-  if (!action || !action.policy.allowSandboxActions) return false;
+  )).limit(1))[0];
+  let action = await readAction();
+  if (!action) {
+    // The fleet may start a just-accepted run before the firing attaches its
+    // selection. Recover the same durable command binding before answering.
+    const [selected] = await db.select({ key: automationCodeActions.idempotencyKey }).from(automationCodeActions)
+      .innerJoin(commands, and(eq(commands.orgId, automationCodeActions.orgId), eq(commands.idempotencyKey, automationCodeActions.idempotencyKey)))
+      .where(and(eq(commands.runId, runId), eq(commands.kind, "run.create"), eq(automationCodeActions.state, "selected"), isNull(automationCodeActions.runId))).limit(1);
+    if (selected) {
+      await attachCodeAction(selected.key, runId);
+      action = await readAction();
+    }
+  }
+  if (!action || !action.policy.allowSandboxActions || (kind === "other" && action.policy.mode !== "agent")) return false;
   const [run] = await db.select({ threadId: runs.threadId }).from(runs).where(eq(runs.id, runId)).limit(1);
   if (!run || run.threadId !== threadId) return false;
   try { await assertCodeActionAuthorized(action, db, "sandbox"); return true; } catch { return false; }

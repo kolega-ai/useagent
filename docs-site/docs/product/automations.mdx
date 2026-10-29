@@ -23,6 +23,18 @@ history drawer, and a fire-now control:
 
 The list refreshes on create, update, and delete so the surface stays current.
 
+For repository work, choose **Agent works in a repository** and select a
+starting repository. Give the agent instructions for the work, including any
+pull request, merge request, review, conflict resolution, or merge you want it
+to perform. Connected GitHub and GitLab personal tokens let the agent use
+`git`, `gh`, and `glab` directly. The account's permissions apply beyond the
+starting repository. Enable sandbox commands without asking for unattended
+execution, or leave approval requests on for work you want to supervise.
+
+Older backend-managed publish and review automations continue to work. Editing
+one to choose agent-managed repository work changes future firings; it does not
+convert actions already selected for earlier firings.
+
 ## Safe by default
 
 <CardGroup cols={2}>
