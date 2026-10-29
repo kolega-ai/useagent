@@ -14,9 +14,13 @@ describe("GitHub personal connection", () => {
     const outsider = await createOrgSession("github-personal-outsider");
     const token = "github-fixture-personal-token";
     const fetcher = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      expect(String(input)).toBe("https://api.github.com/user");
       expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${token}`);
-      return Response.json({ id: 42, login: "fixture-user" }, { headers: { "x-oauth-scopes": "repo, read:org" } });
+      if (String(input) === "https://api.github.com/user") {
+        return Response.json({ id: 42, login: "fixture-user" }, { headers: { "x-oauth-scopes": "repo, read:org" } });
+      }
+      expect(String(input)).toContain("/user/repos?");
+      expect(String(input)).toContain("collaborator");
+      return Response.json([{ id: 111, full_name: "fixture-org/repo", name: "repo", private: true, default_branch: "main" }]);
     });
     try {
       expect((await json("/api/github/connection", { method: "PUT", cookies: member.cookies, body: { token } })).status).toBe(403);
@@ -28,7 +32,10 @@ describe("GitHub personal connection", () => {
       const catalog = await json<{ integrations: Array<{ provider: string; status: string; configured: boolean }> }>("/api/integrations", { cookies: owner.cookies });
       expect(catalog.status).toBe(200);
       expect(catalog.body.integrations.find((entry) => entry.provider === "github")).toMatchObject({ status: "connected", configured: true });
-      expect((await resolveGithubCatalogAuth(owner.orgId)).token).toBe(token);
+      expect(await resolveGithubCatalogAuth(owner.orgId)).toMatchObject({ token, owner: null });
+      const repos = await json<{ repos: Array<{ full_name: string }> }>("/api/repos", { cookies: owner.cookies });
+      expect(repos.status).toBe(200);
+      expect(repos.body.repos.map((repo) => repo.full_name)).toContain("fixture-org/repo");
       expect(await resolveGithubSandboxToken("fixture/repo", owner.orgId)).toBe(token);
       expect(await resolveGithubPublicationToken("fixture/repo", owner.orgId)).toBe(token);
       expect(await resolveGithubAgentToken(owner.orgId)).toBe(token);

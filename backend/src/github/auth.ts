@@ -145,7 +145,7 @@ export async function resolveGithubAuth(): Promise<GithubAuth> {
 export async function resolveGithubCatalogAuth(orgId?: string): Promise<GithubAuth> {
   if (orgId) {
     const personal = await githubPersonalConnection(orgId);
-    if (personal) return { token: personal.token, owner: personal.account, source: "pat", connectionId: personal.connectionId, revision: personal.revision };
+    if (personal) return { token: personal.token, owner: null, source: "pat", connectionId: personal.connectionId, revision: personal.revision };
     const tenant = await resolveTenantGithubAuth(orgId);
     if (tenant) return tenant.auth;
     if (githubConfig().token || githubAppConfig()) {

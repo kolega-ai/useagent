@@ -271,7 +271,7 @@ async function fetchRepos(
     } else {
       // Token only: the authenticated user's repos across their orgs.
       page = await fetchAllPages(
-        `${GITHUB_API}/user/repos?sort=updated&affiliation=owner,organization_member`,
+        `${GITHUB_API}/user/repos?sort=updated&affiliation=owner,organization_member,collaborator`,
         auth.token,
         ac.signal,
         cursor,
