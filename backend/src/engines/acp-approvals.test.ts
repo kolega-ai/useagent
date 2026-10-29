@@ -61,10 +61,10 @@ test("an explicitly authorized automation records its approval before allowing t
   expect(events[2]?.payload).toMatchObject({ decision: "accept", source: "automation_policy" });
 });
 
-test("a revoked automation, unknown permission, or missing allow-once option still needs a human", async () => {
+test("a revoked automation, declined permission, or missing allow-once option still needs a human", async () => {
   for (const item of [
     { permission, authorizeAutomation: async () => false },
-    { permission: { ...permission, toolCall: { kind: "other" } }, authorizeAutomation: async () => true },
+    { permission: { ...permission, toolCall: { kind: "other" } }, authorizeAutomation: async (_run: string, _thread: string, kind: string) => kind !== "other" },
     { permission: { ...permission, options: [{ optionId: "no", kind: "reject_once" as const, name: "Reject" }] }, authorizeAutomation: async () => true },
   ]) {
     const requested = Promise.withResolvers<void>();
@@ -78,6 +78,13 @@ test("a revoked automation, unknown permission, or missing allow-once option sti
     expect(await answer).toBeNull();
     expect(events).toEqual(["approval.requested"]);
   }
+});
+
+test("an agent-managed automation can authorize another native action", async () => {
+  const other = { ...permission, toolCall: { kind: "other" } };
+  const approvals = new AcpApprovals({ record: (async () => {}) as never, exists: (async () => false) as never });
+  expect(await approvals.request({ ...identity, permission: other, redact, authorizeAutomation: async (_run, _thread, kind) => kind === "other" })).toBe("yes");
+  approvals.acknowledge(other);
 });
 
 test("an automation never allows a command if its approval intent cannot be recorded", async () => {

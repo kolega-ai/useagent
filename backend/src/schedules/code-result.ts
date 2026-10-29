@@ -8,6 +8,7 @@ export type CodeDecision =
   | { readonly decision: "skip" };
 
 export function codeActionPrompt(policy: AutomationCodePolicy, target: AutomationReviewTarget | null): string {
+  if (policy.mode === "agent") return "";
   const binding = promptSafeJson({ repository: policy.repository, mode: policy.mode, target });
   const decision = policy.mode === "publish"
     ? '{"decision":"publish","repository":"<exact repository>","title":"<short title>"} or {"decision":"skip"}'
@@ -21,6 +22,7 @@ export function codeActionPrompt(policy: AutomationCodePolicy, target: Automatio
 }
 
 export function parseCodeDecision(summary: string | null, policy: AutomationCodePolicy, target: AutomationReviewTarget | null): CodeDecision | null {
+  if (policy.mode === "agent") return null;
   if (!summary || summary.length > 100_000) return null;
   const text = summary.trim();
   const fenced = /(?:^|\n)```json[ \t]*\n([\s\S]*?)\n```\s*$/iu.exec(text);

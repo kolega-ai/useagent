@@ -59,10 +59,10 @@ export function AutomationEditorModal({
   );
   const [engine, setEngine] = useState("");
   const [model, setModel] = useState("");
-  const [codeMode, setCodeMode] = useState<"none" | "publish" | "review">("none");
+  const [codeMode, setCodeMode] = useState<"none" | "agent" | "publish" | "review">("none");
   const [codeRepo, setCodeRepo] = useState("");
   const [codeDraft, setCodeDraft] = useState(true);
-  const [allowSandboxActions, setAllowSandboxActions] = useState(false);
+  const [allowSandboxActions, setAllowSandboxActions] = useState(true);
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export function AutomationEditorModal({
     setCodeMode(schedule?.code_policy?.mode ?? "none");
     setCodeRepo(schedule?.code_policy?.repository ?? "");
     setCodeDraft(schedule?.code_policy?.draft ?? true);
-    setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? false);
+    setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? true);
     setBusy(false);
     setError(null);
   }, [open, schedule]);
@@ -114,9 +114,11 @@ export function AutomationEditorModal({
         timezone: timezone.trim() || null,
         engine,
         ...(model ? { model } : {}),
-        ...(codeMode === "none" ? { codePolicy: null } : {
+        ...(codeMode === "none" ? { codePolicy: null, ...(schedule?.code_policy ? { repos: [] } : {}) } : {
           repos: [codeRepo],
-          codePolicy: { version: 1, mode: codeMode, repository: codeRepo, draft: codeDraft, allowSandboxActions },
+          codePolicy: codeMode === "agent"
+            ? { version: 2, mode: "agent", repository: codeRepo, draft: false, allowSandboxActions }
+            : { version: 1, mode: codeMode, repository: codeRepo, draft: codeDraft, allowSandboxActions },
         }),
       });
       onClose();
@@ -235,11 +237,12 @@ export function AutomationEditorModal({
           </div> : null}
 
           <div className="flex flex-col gap-2">
-            <span id="automation-code-label" className="text-body-2-medium text-text-primary">Repository actions</span>
-            <Select aria-labelledby="automation-code-label" selectedKey={codeMode} onSelectionChange={(key) => setCodeMode(String(key) as "none" | "publish" | "review")}>
-              <SelectItem id="none">No automatic code actions</SelectItem>
-              <SelectItem id="publish">Open a pull or merge request</SelectItem>
-              <SelectItem id="review">Review and merge changes</SelectItem>
+            <span id="automation-code-label" className="text-body-2-medium text-text-primary">Repository work</span>
+            <Select aria-labelledby="automation-code-label" selectedKey={codeMode} onSelectionChange={(key) => setCodeMode(String(key) as "none" | "agent" | "publish" | "review")}>
+              <SelectItem id="none">No repository action</SelectItem>
+              <SelectItem id="agent">Agent works in a repository</SelectItem>
+              {schedule?.code_policy?.version === 1 && schedule.code_policy.mode === "publish" ? <SelectItem id="publish">Existing pull or merge request workflow</SelectItem> : null}
+              {schedule?.code_policy?.version === 1 && schedule.code_policy.mode === "review" ? <SelectItem id="review">Existing review and merge workflow</SelectItem> : null}
             </Select>
             {codeMode !== "none" ? <>
               {needsSandboxAgent ? <HintText isInvalid>Choose a coding agent that runs in a sandbox.</HintText> : null}
@@ -248,9 +251,10 @@ export function AutomationEditorModal({
                 onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
               {codeRepo ? <p className="break-all text-caption-1-regular text-text-secondary">{codeRepo}</p> : null}
               {codeMode === "publish" ? <Checkbox size="sm" isSelected={codeDraft} onChange={setCodeDraft}>Open as draft</Checkbox> :
-                <HintText>Reviews one open request per run and merges only the approved revision when the provider permits it.</HintText>}
-              <Checkbox size="sm" isSelected={allowSandboxActions} onChange={setAllowSandboxActions}>Allow sandbox commands and file changes without asking</Checkbox>
-              <HintText>This setting authorizes the selected repository action without a separate approval for each request.</HintText>
+                codeMode === "review" ? <HintText>Reviews one open request per run and merges only the approved revision when the provider permits it.</HintText> :
+                  <HintText>The agent can use connected GitHub and GitLab accounts to carry out your instructions.</HintText>}
+              <Checkbox size="sm" isSelected={allowSandboxActions} onChange={setAllowSandboxActions}>{codeMode === "agent" ? "Allow agent actions without asking" : "Allow sandbox commands and file changes without asking"}</Checkbox>
+              {codeMode !== "agent" ? <HintText>This setting authorizes the selected repository action without a separate approval for each request.</HintText> : null}
             </> : null}
           </div>
 

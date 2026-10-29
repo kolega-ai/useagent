@@ -18,3 +18,13 @@ test("code authority is optional and binds exactly one canonical repository to a
   expect(() => assertCodePolicyEngine(policy, "pi")).toThrow("approval setting");
   expect(() => assertCodePolicyEngine({ ...policy, allowSandboxActions: true }, "pi")).not.toThrow();
 });
+
+test("agent-managed repository work has a versioned policy and retains the selected permission", () => {
+  const input = { version: 2, mode: "agent", repository: "owner/repo", draft: false, allowSandboxActions: true } as const;
+  expect(parseCodePolicy(input)).toEqual(input);
+  expect(() => parseCodePolicy({ ...input, version: 1 })).toThrow();
+  expect(() => parseCodePolicy({ ...input, mode: "review" })).toThrow();
+  expect(() => parseCodePolicy({ ...input, draft: true })).toThrow();
+  expect(() => assertCodePolicyEngine(input, "kolega")).not.toThrow();
+  expect(() => assertCodePolicyEngine(input, "pi")).not.toThrow();
+});

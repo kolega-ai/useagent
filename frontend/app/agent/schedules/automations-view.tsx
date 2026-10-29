@@ -34,7 +34,7 @@ import {
   updateSchedule,
   type CreateScheduleInput,
 } from "./schedules-api";
-import { lastRunAt, type ScheduleRecord } from "./schedules-data";
+import { addCreatedAutomation, lastRunAt, type ScheduleRecord } from "./schedules-data";
 import { useAutomationRecovery } from "./use-automation-recovery";
 
 type Filter = "all" | "active" | "paused";
@@ -146,7 +146,7 @@ export function AutomationsView() {
       );
     } else {
       const created = await createSchedule(input);
-      setAutomations((previous) => [created, ...(previous ?? [])]);
+      setAutomations((previous) => addCreatedAutomation(previous, created));
     }
     setError(null);
   };

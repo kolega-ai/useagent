@@ -57,6 +57,11 @@ async function publish(action: CodeActionRecord, title: string, signal: AbortSig
 }
 
 export async function executeCodeAction(action: CodeActionRecord, signal: AbortSignal): Promise<void> {
+  // Agent-managed runs perform their own effects in the sandbox, never here.
+  if (action.policy.mode === "agent") {
+    if (action.claimToken) await markDead(TABLE, action.idempotencyKey, "Agent-managed actions are not published by the backend.", undefined, action.claimToken);
+    return;
+  }
   const authorize = async () => { signal.throwIfAborted(); await assertCodeActionAuthorized(action); };
   await authorize();
   if (!action.runId) throw new CodeActionAuthorityError();
@@ -122,7 +127,10 @@ export async function resetStuckCodeActions(): Promise<number> {
   // its run. Recover from the command lane's durable idempotency key.
   await db.execute(sql`update automation_code_actions a
     set run_id = c.run_id,
-        state = case when r.status = 'completed' then 'pending' when r.status = 'failed' then 'dead' else 'waiting' end,
+        state = case when r.status = 'completed' and a.policy->>'mode' = 'agent' then 'done'
+                     when r.status = 'completed' then 'pending' when r.status = 'failed' then 'dead' else 'waiting' end,
+        result_reason = case when r.status = 'completed' and a.policy->>'mode' = 'agent' then 'The agent completed the run.'
+                             when r.status = 'failed' then 'The automation run did not complete.' else null end,
         updated_at = now()
     from commands c join runs r on r.id = c.run_id
     where a.state = 'selected' and a.run_id is null and c.org_id = a.org_id

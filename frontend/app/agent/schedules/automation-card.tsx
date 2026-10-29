@@ -98,7 +98,7 @@ export function AutomationCard({
             </Chip>
             {schedule.code_policy && (
               <Chip variant="caption" color="soft" className="shrink-0">
-                {schedule.code_policy.mode === "publish" ? "Opens changes" : "Reviews and merges"}
+                {schedule.code_policy.mode === "agent" ? "Repository work" : schedule.code_policy.mode === "publish" ? "Opens changes" : "Reviews and merges"}
               </Chip>
             )}
           </div>

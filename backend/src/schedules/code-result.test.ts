@@ -19,4 +19,9 @@ describe("automation code decisions", () => {
     expect(parseCodeDecision('{"decision":"skip"}', review, target)).toEqual({ decision: "skip" });
     expect(codeActionPrompt(review, target)).toContain(target.headSha);
   });
+  test("agent-managed work adds no instructions or backend decision contract", () => {
+    const direct = { version: 2 as const, mode: "agent" as const, repository: "group/repo", draft: false as const, allowSandboxActions: true };
+    expect(codeActionPrompt(direct, null)).toBe("");
+    expect(parseCodeDecision('{"decision":"skip"}', direct, null)).toBeNull();
+  });
 });

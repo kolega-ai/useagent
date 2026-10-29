@@ -10,7 +10,8 @@ export function parseCodePolicy(value: unknown): AutomationCodePolicy | null | u
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid code automation policy.");
   const policy = value as Record<string, unknown>;
   if (Object.keys(policy).some((key) => !["version", "mode", "repository", "draft", "allowSandboxActions"].includes(key)) ||
-      policy.version !== 1 || (policy.mode !== "publish" && policy.mode !== "review") ||
+      !((policy.version === 1 && (policy.mode === "publish" || policy.mode === "review")) ||
+        (policy.version === 2 && policy.mode === "agent" && policy.draft === false)) ||
       typeof policy.repository !== "string" || typeof policy.draft !== "boolean" || typeof policy.allowSandboxActions !== "boolean") {
     throw new Error("Invalid code automation policy.");
   }
@@ -19,7 +20,8 @@ export function parseCodePolicy(value: unknown): AutomationCodePolicy | null | u
     ? normalizeGitLabRepository(repository) === repository.slice(GITLAB_REPOSITORY_PREFIX.length)
     : normalizeGitHubRepository(repository) === repository;
   if (!valid) throw new Error("Select a valid GitHub or GitLab repository.");
-  return { version: 1, mode: policy.mode, repository, draft: policy.draft, allowSandboxActions: policy.allowSandboxActions };
+  if (policy.version === 2) return { version: 2, mode: "agent", repository, draft: false, allowSandboxActions: policy.allowSandboxActions };
+  return { version: 1, mode: policy.mode as "publish" | "review", repository, draft: policy.draft, allowSandboxActions: policy.allowSandboxActions };
 }
 
 export function assertCodePolicyRepository(policy: AutomationCodePolicy | null, repos: readonly string[], owner: string | null): void {
