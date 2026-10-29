@@ -17,6 +17,7 @@ export interface AcpRuntime {
   readonly model: string;
   readonly style: "openai_responses" | "openai_chat" | "anthropic";
   readonly mode: "plan" | "build";
+  readonly permission: "ask" | "auto";
   readonly runAsUser: string | null;
   readonly spoolDirectory: string;
 }
@@ -40,11 +41,20 @@ export function acpLaunchCommand(runtime: AcpRuntime, sourceControlEnv = AGENT_S
     ...(runtime.style === "openai_responses" ? { KOLEGA_CODE_ENDPOINT_THINKING: "openai_responses_reasoning" } : {}),
   };
   const launch = `[ ! -r ${shellQuote(sourceControlEnv)} ] || . ${shellQuote(sourceControlEnv)}; ` +
-    `exec ${shellQuote(runtime.executable)} acp --permission-mode ask`;
+    `exec ${shellQuote(runtime.executable)} acp --permission-mode ${runtime.permission}`;
   const command = `exec env -i ${Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} /bin/sh -c ${shellQuote(launch)}`;
   return runtime.runAsUser
     ? `exec su -s /bin/sh ${shellQuote(runtime.runAsUser)} -c ${shellQuote(command)}`
     : command;
+}
+
+/** Reapply the current turn's choices after both creation and session load. */
+export async function configureAcpSession(
+  control: Pick<AcpSessionControl, "configure">,
+  runtime: Pick<AcpRuntime, "permission" | "mode">,
+): Promise<void> {
+  await control.configure("mode", runtime.mode);
+  await control.configure("permission-auto", runtime.permission);
 }
 
 export class SandboxAcpSession {
@@ -100,8 +110,7 @@ export class SandboxAcpSession {
       await transport.start();
       void transport.waitForTermination().then(() => control.close("ACP sandbox process exited"));
       const sessionId = await control.open(input.workdir, input.resumeId);
-      await control.configure("permission-auto", "ask");
-      await control.configure("mode", input.runtime.mode);
+      await configureAcpSession(control, input.runtime);
       instance = new SandboxAcpSession(control, transport, sessionId, input.sandbox.id, input.expectedSandbox);
       return instance;
     } catch (error) {

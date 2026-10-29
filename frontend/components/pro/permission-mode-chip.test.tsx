@@ -44,6 +44,8 @@ describe("permission mode faces", () => {
     );
     // An engine that cannot ask first is offered Bypass all alone.
     expect(permissionModeOptions("pi").map((row) => row.id)).toEqual(["bypass"]);
+    // This agent's native automatic mode runs commands and edits without asking.
+    expect(permissionModeOptions("kolega").map((row) => row.id)).toEqual(["manual", "plan", "bypass"]);
   });
 
   test("the rows follow the add menu's grammar: one line, the label then the muted description, a check on the selected row", () => {
@@ -147,8 +149,8 @@ describe("permission mode chip and tag", () => {
       new URL("../../app/(workspace)/agent/new/new-task-composer.tsx", import.meta.url),
       "utf8",
     );
-    expect(composer).toContain('import { permissionModeFor } from "@/components/chat/permission-mode";');
-    expect(composer).toContain("const permissionMode = permissionModeFor(engine, chosenMode);");
+    expect(composer).toContain('import { defaultPermissionMode, permissionModeFor } from "@/components/chat/permission-mode";');
+    expect(composer).toContain("const permissionMode = permissionModeFor(engine, chosenMode ?? defaultPermissionMode(engine));");
     expect(composer).toContain("permission_mode: permissionMode,");
     expect(composer).toContain("onChange={setChosenMode}");
     expect(composer).toContain("engine={engine}");

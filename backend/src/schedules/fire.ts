@@ -32,7 +32,7 @@ import { getRunForOrg } from "../runs/repo";
 import { AUTOMATION_RUN_ORIGIN } from "../runs/origin";
 import { attachCodeAction, selectCodeAction } from "./code-actions-repo";
 import { codeActionPrompt } from "./code-result";
-import { permissionModeSupported } from "../engines/permission-mode";
+import { automationPermissionMode } from "../engines/permission-mode";
 
 /**
  * Deterministic per-occurrence idempotency key. A cron firing keys on the MINUTE
@@ -105,9 +105,7 @@ export async function fireScheduleWithOutcome(
   finally { clearTimeout(selectionTimer); }
   const effectivePrompt = codeAction ? schedule.prompt + codeActionPrompt(codeAction.policy, codeAction.target) : schedule.prompt;
   const automationPermission = codeAction
-    ? codeAction.policy.allowSandboxActions && permissionModeSupported(schedule.engine, "full-access") ? "full-access" as const
-      : permissionModeSupported(schedule.engine, "approval-required") ? "approval-required" as const
-      : null
+    ? automationPermissionMode(schedule.engine, codeAction.policy.allowSandboxActions)
     : undefined;
   if (codeAction && !automationPermission) throw new Error("This agent cannot honor the automation's sandbox permission setting.");
   const runId = crypto.randomUUID();

@@ -59,3 +59,22 @@ test("an empty successful load response does not prove restoration", async () =>
   await expect(client.open("/work", "missing")).rejects.toThrow("could not be restored");
   client.close();
 });
+
+test("session configuration must confirm the requested permission mode", async () => {
+  let confirmed = "auto";
+  let client: AcpSessionControl;
+  client = new AcpSessionControl(async (line) => {
+    const message = JSON.parse(line) as Record<string, unknown>;
+    const result = message.method === "initialize"
+      ? { protocolVersion: 1 }
+      : message.method === "session/new" ? { sessionId: "native" }
+      : { configOptions: [{ id: "permission-auto", currentValue: confirmed }] };
+    queueMicrotask(() => client.ingest(frame({ jsonrpc: "2.0", id: message.id, result })));
+  }, async () => null, () => {});
+  await client.open("/work");
+  await client.configure("permission-auto", "auto");
+  await expect(client.configure("permission-auto", "ask")).rejects.toThrow("did not confirm");
+  confirmed = "ask";
+  await client.configure("permission-auto", "ask");
+  client.close();
+});

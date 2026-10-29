@@ -42,7 +42,7 @@ import {
   modelOptionsForEngine,
   type PermissionMode,
 } from "@/components/chat/types";
-import { permissionModeFor } from "@/components/chat/permission-mode";
+import { defaultPermissionMode, permissionModeFor } from "@/components/chat/permission-mode";
 import { PermissionModeChip } from "@/components/pro/permission-mode-chip";
 import { AgentThinking } from "@/components/application/agent-thinking/agent-thinking";
 import { ComposerLoader } from "@/components/application/composer-loader/composer-loader";
@@ -101,8 +101,8 @@ export function NewTaskComposer({
   const [selectedRepos, setSelectedRepos] = useState<string[]>([]);
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [playbook, setPlaybook] = useState(""); // selected skill/playbook id, "" = none
-  // A new thread starts in Full access unless the person picks a mode before sending.
-  const [chosenMode, setChosenMode] = useState<PermissionMode>("full-access");
+  // Keep each engine's default until the person picks a mode.
+  const [chosenMode, setChosenMode] = useState<PermissionMode | null>(null);
   // Where the thread runs: the desktop app's Local/Cloud menu sets it (Local
   // while this machine's runner is connected); the web app has no menu, sends
   // nothing and runs on the cloud. A machine login counts only on the machine.
@@ -118,7 +118,7 @@ export function NewTaskComposer({
   const [engine, setEngine] = useState<string>("codex");
   // What actually rides POST /api/runs: the pick, unless the selected engine
   // cannot honour it (admission would refuse the run), then Full access.
-  const permissionMode = permissionModeFor(engine, chosenMode);
+  const permissionMode = permissionModeFor(engine, chosenMode ?? defaultPermissionMode(engine));
   // The "+" action shelf under the composer holds the add-context controls
   // (upload, repos, skills, GitHub, branches) so the toolbar row never overflows.
   const [addMenuOpen, setAddMenuOpen] = useState(false);

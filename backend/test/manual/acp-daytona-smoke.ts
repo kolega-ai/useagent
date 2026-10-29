@@ -37,7 +37,7 @@ try {
   if (install.exitCode !== 0) throw new Error(`Pinned runtime installation failed (exit ${install.exitCode})`);
   const launch = await sandbox.process.executeCommand("nohup python3 /home/daytona/.useagent/model.py >/tmp/useagent-acp-model.log 2>&1 </dev/null &", undefined, undefined, 20);
   if (launch.exitCode !== 0) throw new Error("Synthetic model could not start");
-  const runtime: AcpRuntime = { executable: "/home/daytona/.useagent/acp-agent/bin/kolega-code", home: "/home/daytona", model: "test-model", style: "openai_chat", mode: "build", runAsUser: null, spoolDirectory: "/home/daytona/.useagent/acp-rpc-output" };
+  const runtime: AcpRuntime = { executable: "/home/daytona/.useagent/acp-agent/bin/kolega-code", home: "/home/daytona", model: "test-model", style: "openai_chat", mode: "build", permission: "ask", runAsUser: null, spoolDirectory: "/home/daytona/.useagent/acp-rpc-output" };
   let approved = false;
   async function turn(session: SandboxAcpSession, prompt: string): Promise<void> {
     const done = Promise.withResolvers<void>();

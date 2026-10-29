@@ -367,6 +367,14 @@ validating that path. Set the matching `PROVIDER_HEALTH_*` flag for each other
 model provider you intend to offer. Select **Kolega Code** and a model in the
 composer; `deepseek/deepseek-flash` selects DeepSeek V4.1 Flash.
 
+In the task composer, select **Bypass all** to use Kolega Code's native
+automatic permission mode for commands and edits. **Manual** keeps approval
+requests, and **Plan mode** remains read-only. For an unattended
+agent-managed automation, select repository work and allow sandbox actions;
+UseAgent answers its tool requests under that automation's existing authority
+checks. A task without an explicit permission choice keeps the approval-based
+default.
+
 The gateway hostname must be reachable from the sandbox, not just from the
 backend. Daytona applies [tier-based outbound restrictions](https://www.daytona.io/docs/en/network-limits/):
 on restricted tiers, a custom gateway hostname may require Daytona support or a

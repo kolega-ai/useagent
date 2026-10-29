@@ -46,7 +46,7 @@ async function rootRun(cookies: string, permissionMode: string) {
 }
 
 describe("permission mode across the lanes that continue a turn", () => {
-  test("Kolega defaults to asking and refuses bypass on the shared command lane", async () => {
+  test("Kolega defaults to asking and accepts explicitly selected full access on the shared command lane", async () => {
     const owner = await createOrgSession("acp-permission-owner");
     const actor = await getRunForOrg(owner.orgId, await rootRun(owner.cookies, "approval-required"));
     if (!actor) throw new Error("owner run missing");
@@ -56,7 +56,9 @@ describe("permission mode across the lanes that continue a turn", () => {
     expect(accepted.status).toBe("created");
     expect((await getRun(id))?.permissionMode).toBe("approval-required");
     const other = crypto.randomUUID();
-    await expect(acceptRunCommand({ orgId: owner.orgId, actorId: actor.userId, idempotencyKey: uid("acp-bypass"), run: { ...run, id: other, threadId: other, permissionMode: "full-access" } })).rejects.toMatchObject({ code: "permission_mode_unsupported" });
+    const automatic = await acceptRunCommand({ orgId: owner.orgId, actorId: actor.userId, idempotencyKey: uid("acp-bypass"), run: { ...run, id: other, threadId: other, permissionMode: "full-access" } });
+    expect(automatic.status).toBe("created");
+    expect((await getRun(other))?.permissionMode).toBe("full-access");
   });
   test("a child of a read-only turn keeps read only, and cannot be spawned on an engine that ignores it", async () => {
     const owner = await createOrgSession("perm-child-owner");

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { validateProviderDriver } from "@useagent/agent-harness/control";
 import { resolveProviderRegistration } from "./index";
-import { acpLaunchCommand } from "./acp-sandbox-bridge";
+import { acpLaunchCommand, configureAcpSession } from "./acp-sandbox-bridge";
 import { allowedModelsForEngine, defaultModelForEngine } from "../runs/model-policy";
 import { providerForEngine } from "../provider-gateway/provider";
 import { engineModelReadyForDispatch } from "../runs/engine-readiness";
@@ -27,10 +27,20 @@ describe("native ACP integration", () => {
   });
 
   test("starts with a clean environment and a local broker placeholder", () => {
-    const command = acpLaunchCommand({ executable: "/opt/agent/bin/kolega-code", home: "/home/user", model: "deepseek-flash", style: "openai_responses", mode: "build", runAsUser: null, spoolDirectory: "/home/user/spool" });
+    const runtime = { executable: "/opt/agent/bin/kolega-code", home: "/home/user", model: "deepseek-flash", style: "openai_responses" as const, mode: "build" as const, permission: "ask" as const, runAsUser: null, spoolDirectory: "/home/user/spool" };
+    const command = acpLaunchCommand(runtime);
     expect(command).toContain("env -i");
     expect(command).toContain("KOLEGA_CODE_ENDPOINT_API_KEY='useagent-broker'");
     expect(command).not.toContain("DEEPSEEK_API_KEY");
     expect(command).toContain("--permission-mode ask");
+    expect(acpLaunchCommand({ ...runtime, permission: "auto" })).toContain("--permission-mode auto");
+  });
+
+  test("sets the current turn's permission and mode after opening or loading a session", async () => {
+    const configured: Array<[string, string | boolean]> = [];
+    const control = { configure: async (name: string, value: string | boolean) => { configured.push([name, value]); } };
+    await configureAcpSession(control, { permission: "auto", mode: "build" });
+    await configureAcpSession(control, { permission: "ask", mode: "plan" });
+    expect(configured).toEqual([["mode", "build"], ["permission-auto", "auto"], ["mode", "plan"], ["permission-auto", "ask"]]);
   });
 });

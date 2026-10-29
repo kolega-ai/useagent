@@ -48,6 +48,7 @@ export async function prepareAcpRuntime(
   const style = providerId === "anthropic" ? "anthropic" : providerId === "openrouter" ? "openai_chat" : "openai_responses";
   return { executable, home, model: selected.slice(selected.indexOf("/") + 1), style,
     mode: ctx.permissionMode === "read-only" ? "plan" : "build",
+    permission: ctx.permissionMode === "full-access" ? "auto" : "ask",
     runAsUser: layout.runsAsRoot ? USER : null, spoolDirectory };
 }
 

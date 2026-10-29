@@ -17,7 +17,7 @@ import type { SlashCommand } from "@/components/chat/slash-command";
 import { compactAvailable } from "@/components/chat/composer-model";
 import { cleanPrompt, type EngineId, type MemoryScope, modelLabel, type PermissionMode } from "@/components/chat/types";
 import { ComposerStatusBar } from "@/components/pro/composer-status-bar";
-import { permissionModeFor } from "@/components/chat/permission-mode";
+import { defaultPermissionMode, permissionModeFor } from "@/components/chat/permission-mode";
 import { PermissionModeChip } from "@/components/pro/permission-mode-chip";
 import { type QueuedMessage, QueuedMessages } from "@/components/pro/queued-messages";
 import { RunningFooter } from "@/components/pro/running-footer";
@@ -122,12 +122,11 @@ export function ConversationComposer({
   const context = useMemo(() => latestThreadContext(turns), [turns]);
   const spend = useSpend();
   // The chip follows the thread's newest turn until the person picks a mode; a
-  // legacy turn that reported none reads as full access, the posture it ran
-  // with. An engine that cannot honour the mode sends Full access instead.
+  // legacy turn that reported none uses its engine's established default.
   const [chosenMode, setChosenMode] = useState<PermissionMode | null>(null);
   const permissionMode = permissionModeFor(
     defaultEngine,
-    chosenMode ?? turns.at(-1)?.run.permission_mode ?? "full-access",
+    chosenMode ?? turns.at(-1)?.run.permission_mode ?? defaultPermissionMode(defaultEngine),
   );
   const reply: ComposerSubmit = (text, engine, model, key, scope, command, attachments, resources, bots, _mode, reasoningEffort) =>
     onReply(text, engine, model, key, scope, command, attachments, resources, bots, permissionMode, reasoningEffort);
