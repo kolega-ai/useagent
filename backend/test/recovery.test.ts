@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../src/db/client";
-import { providerEvents, reconcileQueue, runs } from "../src/db/schema";
+import { providerEvents, reconcileQueue, runs, secrets } from "../src/db/schema";
 import { acceptRunCommand } from "../src/commands";
 import { settleCommandForRun } from "../src/commands/dispatch";
 import { acceptRunCancel, CANCEL_SUMMARY } from "../src/commands/cancel";
@@ -33,6 +33,7 @@ import type { EngineId, RunStatus } from "../src/db/schema";
 import { waitFor } from "./helpers"; // side-effect: imports src/index → migrate + seed
 import { enqueueReconcile } from "../src/runs/reconcile-queue";
 import { createSecretRedactor } from "../src/secrets/redact";
+import { deleteSecret, upsertWorkspaceFile } from "../src/secrets/store";
 import { DEV_ORG_ID, DEV_USER_ID } from "../src/seed";
 import { SANDBOX_NAME_PREFIX } from "../src/sandboxes/sandbox-names";
 
@@ -347,6 +348,30 @@ describe("command-lane restart recovery", () => {
 
     // B re-dispatched → executes (mock) → completes. (Order: only after A settled.)
     await waitFor(() => isDone(B));
+  });
+
+  test("redacts the file version pinned to a recovered thread after it is replaced", async () => {
+    const runId = crypto.randomUUID();
+    const name = `RECOVERY_FILE_${runId.replaceAll("-", "").toUpperCase()}`;
+    await upsertWorkspaceFile(ORG, name, Buffer.from("EXAMPLE=old-recovery-synthetic-value\n"));
+    const [stored] = await db.select().from(secrets).where(and(eq(secrets.orgId, ORG), eq(secrets.name, name)));
+    try {
+      await seed({ runId, threadId: runId, parentRunId: null, engine: "opencode", runStatus: "running",
+        commandState: "dispatched", session: "ses_recover_file", sandbox: "sb" });
+      await db.update(runs).set({ workspaceFiles: [{ name, path: ".env", repository: "example/repo",
+        versionId: stored!.workspaceFileVersionId! }] }).where(eq(runs.id, runId));
+      await upsertWorkspaceFile(ORG, name, Buffer.from("EXAMPLE=new-recovery-synthetic-value\n"));
+      let captured = "";
+      await recoverStaleRuns(async (_handle, checkpoint) => {
+        if (checkpoint.eventContext?.runId !== runId) return { status: "unreachable" };
+        captured = checkpoint.eventContext.redact!.text("old-recovery-synthetic-value");
+        return { status: "completed", summary: captured };
+      });
+      expect(captured).toBe("<redacted>");
+      expect((await getRun(runId))?.summary).toBe("<redacted>");
+    } finally {
+      await deleteSecret(ORG, name);
+    }
   });
 
   test("persists recovered terminal activity before finalizing the run", async () => {

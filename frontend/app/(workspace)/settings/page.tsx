@@ -12,6 +12,7 @@ import { IntegrationConnections } from "./integration-connections";
 import { SourceControlConnection } from "./source-control-connection";
 import { ProviderConnectionsCard } from "./provider-connections-card";
 import { RepositorySnapshots } from "./repository-snapshots";
+import { RepositoryFiles } from "./repository-files";
 import { SandboxMinutesRow } from "./sandbox-minutes-row";
 import { SandboxProviderRow } from "./sandbox-provider-row";
 import { SecretsCard } from "./secrets-card";
@@ -163,6 +164,7 @@ export default function SettingsPage() {
                   <div className="flex flex-col gap-4">
                     <SandboxProviderRow />
                     <ComputerConnectionsCard />
+                    <RepositoryFiles />
                     <RepositorySnapshots />
                   </div>
                 </Section>
@@ -180,7 +182,7 @@ export default function SettingsPage() {
               <Section
                 id="secrets"
                 title="Secrets"
-                description="Persisted for every future session on this workspace."
+                description="Encrypted values for workspace integrations."
               >
                 <SecretsCard />
               </Section>

@@ -108,7 +108,7 @@ export async function proposeKnowledgeDraftForRun(
   });
   if (!reason) return null;
 
-  const redact = await orgSecretRedactor(run.orgId);
+  const redact = await orgSecretRedactor(run.orgId, run.workspaceFiles);
 
   // The ordered executable trace (bounded, redacted) — the step labels were
   // already redacted at capture time; the org redactor here is defense in depth

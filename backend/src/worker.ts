@@ -302,7 +302,7 @@ async function runWorker(runId: string): Promise<void> {
         run.repos,
         run.repositorySnapshot,
         run.repositoryCubeSnapshot, run.repositoryBoxSnapshot, run.repositoryE2bTemplate, run.repositoryLocalImage,
-        run.resolvedResources,
+        run.resolvedResources, run.workspaceFiles,
         run.orgId, run.userId, run.origin,
         inputFiles,
         ac.signal,
@@ -474,6 +474,7 @@ async function runEngine(
   repositorySnapshot: string | null,
   repositoryCubeSnapshot: string | null, repositoryBoxSnapshot: string | null, repositoryE2bTemplate: string | null, repositoryLocalImage: string | null,
   resolvedResources: EngineRunContext["resolvedResources"],
+  workspaceFiles: EngineRunContext["workspaceFiles"],
   orgId: string | null, userId: string | null, origin: string | null,
   inputFiles: readonly RunInputFile[],
   /** Aborts on the hard timeout OR a user cancel (worker owns the controller). */
@@ -576,6 +577,7 @@ async function runEngine(
     repositorySnapshot,
     repositoryCubeSnapshot, repositoryBoxSnapshot, repositoryE2bTemplate, repositoryLocalImage,
     resolvedResources,
+    workspaceFiles,
     engineSessionId,
     providerSession,
     expectedSandbox, permissionMode, runLocation,
@@ -641,7 +643,7 @@ async function runEngine(
     const compactTermination = compactWaitTimeoutSummary(commandName, timedOut, err);
     let redactFailureText = (_text: string): string => "provider request failed";
     try {
-      const redactor = await strictOrgSecretRedactor(orgId);
+      const redactor = await strictOrgSecretRedactor(orgId, workspaceFiles);
       redactFailureText = redactor.text;
     } catch {
       // Fail closed: never persist or log raw provider errors if secret loading fails.

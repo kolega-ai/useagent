@@ -14,6 +14,7 @@ import type { RunResource } from "../../resources/types";
 import type { ExpectedSandboxBinding } from "../../sandboxes/expected-binding";
 import type { ProviderSessionBinding } from "@useagent/agent-harness/canonical";
 import type { PreambleHashes } from "../../engines/turn-prompt";
+import type { ThreadWorkspaceFile } from "../../workspace-files/types";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -110,6 +111,7 @@ export const runs = pgTable(
     repositoryBoxSnapshot: text("repository_box_snapshot"),
     repositoryE2bTemplate: text("repository_e2b_template"),
     repositoryLocalImage: text("repository_local_image"),
+    workspaceFiles: jsonb("workspace_files").$type<ThreadWorkspaceFile[]>().notNull().default(sql`'[]'::jsonb`),
     // The actual template used for an allocation; null for older allocations.
     sandboxSnapshot: text("sandbox_snapshot"),
     expectedSandbox: jsonb("expected_sandbox").$type<ExpectedSandboxBinding>(),

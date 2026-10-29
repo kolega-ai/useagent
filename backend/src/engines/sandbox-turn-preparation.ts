@@ -22,6 +22,8 @@ import { dropPrefetchedSandboxResults, prefetchSandboxCommand } from "../sandbox
 import { buildRootTraversalAccessCommand } from "./runtime-user-permissions";
 import { agentSourceControlCredentials, materializeAgentSourceControl, sourceControlCredentialRevision, sourceControlCredentialValues, AGENT_SOURCE_CONTROL_ROOT } from "../repositories/agent-credentials";
 import { ensureSourceControlTools } from "./source-control-tools";
+import { resolveThreadWorkspaceFiles } from "../workspace-files/store";
+import { materializeWorkspaceFiles } from "../workspace-files/materialize";
 
 export interface SandboxTurnPreparationOptions<T> {
   readonly snapshot: string;
@@ -90,7 +92,10 @@ export async function prepareSandboxTurn<T>(
 ): Promise<PreparedSandboxTurn<T>> {
   const secretInjection = await composeSecretEnv(ctx, { excludeNames: PROVIDER_SECRET_NAMES });
   const sourceControl = await agentSourceControlCredentials(ctx.orgId);
-  const redact = createSecretRedactor([...secretInjection.redactionValues, ...sourceControlCredentialValues(sourceControl)]);
+  if (ctx.workspaceFiles?.length && !ctx.orgId) throw new Error("Repository files need an organization");
+  const workspaceFiles = ctx.orgId ? await resolveThreadWorkspaceFiles(ctx.orgId, ctx.workspaceFiles ?? []) : [];
+  const redact = createSecretRedactor([...secretInjection.redactionValues, ...sourceControlCredentialValues(sourceControl),
+    ...workspaceFiles.flatMap((file) => file.redactionValues)]);
   const endSandbox = ctx.timing?.begin(`${options.timingPrefix}.sandbox_acquire`);
   // A retained sandbox's warm checks start while acquisition checks its
   // credentials; whatever this turn does not take is dropped when it ends.
@@ -234,6 +239,11 @@ export async function prepareSandboxTurn<T>(
           throw new Error("failed to transfer prepared repositories to runtime user");
         }
       }
+      ctx.signal.throwIfAborted();
+      await stage("repository_files", () => materializeWorkspaceFiles({
+        sandbox, layout: runtimeLayout, workdir, threadId: ctx.threadId ?? ctx.runId,
+        files: workspaceFiles, owner: resourceUser,
+      }));
     };
     const prepareProvider = () => stage("provider_bridge", async () => {
       const state = await options.prepareProvider(sandbox, workdir, lease.binding, {

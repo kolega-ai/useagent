@@ -27,6 +27,28 @@ export interface SecretRedactor {
   unknown<T>(value: T): T;
 }
 
+/** Include individual dotenv values as well as the whole uploaded text. Binary
+ * files remain byte-exact for delivery; they are not decoded into log text. */
+export function secretRedactionValues(secret: { readonly kind: string; readonly value: string }): string[] {
+  if (secret.kind !== "workspace_file") return [secret.value];
+  const bytes = Buffer.from(secret.value, "base64");
+  let content: string;
+  try { content = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return []; }
+  if (content.includes("\0")) return [];
+  const values = [content];
+  for (const line of content.split(/\r?\n/u)) {
+    const match = /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*(?:"((?:\\.|[^"])*)"|'([^']*)'|([^#]*?))\s*(?:#.*)?$/u.exec(line);
+    if (!match) continue;
+    const raw = match[1] ?? match[2] ?? match[3] ?? "";
+    const value = match[1] === undefined ? raw.trim() : raw.replace(/\\([nrt"\\])/gu, (_m, code: string) =>
+      ({ n: "\n", r: "\r", t: "\t", '"': '"', "\\": "\\" })[code] ?? code);
+    // Match the redactor's minimum: a one-character setting such as DEBUG=1
+    // must not block every artifact containing that character.
+    if (value.length >= 4) values.push(value);
+  }
+  return values;
+}
+
 /** Signed provider/tool capabilities are bearer credentials even when no org
  * secret is present. Artifact egress uses this shape check before persistence. */
 export function containsSignedCapability(value: string): boolean {

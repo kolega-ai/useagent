@@ -6,7 +6,7 @@ import { SecretsManager } from "./secrets-manager";
 
 export const metadata: Metadata = {
   title: "Secrets",
-  description: "Encrypted org secrets injected into every sandbox this workspace boots.",
+  description: "Encrypted workspace secrets.",
 };
 
 export default async function SecretsPage() {
@@ -28,8 +28,7 @@ export default async function SecretsPage() {
           <div className="flex flex-col gap-0.5">
             <h1 className="text-title-2-medium text-text-primary">Secrets</h1>
             <p className="text-body-2-regular text-text-secondary">
-              Encrypted values injected into every sandbox this workspace boots - as env vars or
-              files
+              Encrypted values for workspace integrations.
             </p>
           </div>
         </div>

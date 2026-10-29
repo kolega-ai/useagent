@@ -4,6 +4,7 @@ import type { TimingSpanEnd } from "../runs/run-timing";
 import type { RunResource } from "../resources/types";
 import type { ExpectedSandboxBinding } from "../sandboxes/expected-binding";
 import type { SandboxHandle } from "../sandboxes/provider";
+import type { ThreadWorkspaceFile } from "../workspace-files/types";
 import type {
   HarnessSession,
   ProviderSessionBinding,
@@ -106,6 +107,7 @@ export interface EngineRunContext {
    * the bytes into sandboxPath before dispatch; only paths and metadata enter
    * the model context. */
   inputFiles?: readonly RunInputFile[];
+  workspaceFiles?: readonly ThreadWorkspaceFile[];
   /** Structured, control-plane-authored file references for this turn. */
   inputContext?: string;
   /** Set when a fresh sandbox replaced the one the thread used before; composed

@@ -2,12 +2,15 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { RepositoryFile } from "../../workspace-files/types";
+import { sql } from "drizzle-orm";
 
 // Durable project identity. A project may be backed by one GitHub repository,
 // or be a standalone workspace with no repository. Runs and tasks reference
@@ -25,6 +28,7 @@ export const projects = pgTable(
     boxSnapshot: text("box_snapshot"),
     e2bTemplate: text("e2b_template"),
     localImage: text("local_image"),
+    workspaceFiles: jsonb("workspace_files").$type<RepositoryFile[]>().notNull().default(sql`'[]'::jsonb`),
     archived: boolean("archived").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

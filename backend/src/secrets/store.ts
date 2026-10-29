@@ -1,9 +1,11 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "../db/client";
-import { secrets, type SecretKind } from "../db/schema";
+import { secrets, workspaceFileVersions, type SecretKind } from "../db/schema";
 import { isReservedSecretName, isValidSecretName, openSecret, sealSecret } from "./crypto";
-import { createSecretRedactor, type SecretRedactor } from "./redact";
+import { createSecretRedactor, secretRedactionValues, type SecretRedactor } from "./redact";
 import { agentSourceControlCredentials, sourceControlCredentialValues } from "../repositories/agent-credentials";
+import { resolveThreadWorkspaceFiles } from "../workspace-files/store";
+import type { ThreadWorkspaceFile } from "../workspace-files/types";
 
 // ---------------------------------------------------------------------------
 // Org-secrets data access (task #100). Values are encrypted at rest (crypto.ts)
@@ -65,6 +67,7 @@ export async function upsertSecret(
     })
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.name],
+      setWhere: kind === "workspace_file" ? eq(secrets.kind, "workspace_file") : ne(secrets.kind, "workspace_file"),
       set: {
         kind,
         valueCiphertext: sealed.ciphertext,
@@ -75,8 +78,31 @@ export async function upsertSecret(
     })
     .returning();
   // An upsert always writes (and returns) exactly one row; guard for the type.
-  if (!row) throw new Error("secret upsert returned no row");
+  if (!row) throw new Error("A secret with this name has a different type");
   return toMeta(row);
+}
+
+/** Store bytes as an immutable encrypted version and point the named file at
+ * it atomically. Old threads keep their version after a replacement. */
+export async function upsertWorkspaceFile(orgId: string, name: string, bytes: Uint8Array): Promise<SecretMeta> {
+  const sealed = sealSecret(Buffer.from(bytes).toString("base64"));
+  return db.transaction(async (tx) => {
+    const [version] = await tx.insert(workspaceFileVersions).values({
+      orgId, name, valueCiphertext: sealed.ciphertext, iv: sealed.iv, tag: sealed.tag,
+    }).returning({ id: workspaceFileVersions.id });
+    if (!version) throw new Error("Could not save the file version");
+    const [row] = await tx.insert(secrets).values({
+      orgId, name, kind: "workspace_file", valueCiphertext: sealed.ciphertext,
+      iv: sealed.iv, tag: sealed.tag, workspaceFileVersionId: version.id,
+    }).onConflictDoUpdate({
+      target: [secrets.orgId, secrets.name],
+      setWhere: eq(secrets.kind, "workspace_file"),
+      set: { valueCiphertext: sealed.ciphertext, iv: sealed.iv, tag: sealed.tag,
+        workspaceFileVersionId: version.id, updatedAt: new Date() },
+    }).returning();
+    if (!row) throw new Error("A secret with this name has a different type");
+    return toMeta(row);
+  });
 }
 
 /** Delete a secret by name (org-scoped). Returns true when a row was removed; a
@@ -152,13 +178,17 @@ export async function decryptOrgSecrets(orgId: string): Promise<DecryptedSecrets
  *  derived after the fact (recovery re-probes, learning-lane traces) redacts
  *  exactly what the live capture lane does. A null org (or a decrypt failure)
  *  still yields the baseline redactor that scrubs JWTs and signed capabilities.
- *  Never throws. */
-export async function orgSecretRedactor(orgId: string | null): Promise<SecretRedactor> {
+ *  When a thread has pinned files, loading them must succeed: replaying with
+ *  an incomplete redactor could persist the contents of an older file version. */
+export async function orgSecretRedactor(orgId: string | null, files: readonly ThreadWorkspaceFile[] = []): Promise<SecretRedactor> {
+  if (files.length) return strictOrgSecretRedactor(orgId, files);
   if (!orgId) return createSecretRedactor([]);
   try {
     const decrypted = await decryptOrgSecrets(orgId);
     const sourceControl = await agentSourceControlCredentials(orgId);
-    return createSecretRedactor([...decrypted.secrets.map((s) => s.value), ...sourceControlCredentialValues(sourceControl)]);
+    const selected = await resolveThreadWorkspaceFiles(orgId, files);
+    return createSecretRedactor([...decrypted.secrets.filter((secret) => secret.kind !== "workspace_file").flatMap(secretRedactionValues), ...sourceControlCredentialValues(sourceControl),
+      ...selected.flatMap((file) => file.redactionValues)]);
   } catch {
     return createSecretRedactor([]);
   }
@@ -167,14 +197,16 @@ export async function orgSecretRedactor(orgId: string | null): Promise<SecretRed
 /** Build a complete org-secret redactor for credential-bearing durable writes.
  * Unlike orgSecretRedactor, lookup and per-secret decryption failures propagate
  * so callers can fail closed before dispatching or persisting unredacted input. */
-export async function strictOrgSecretRedactor(orgId: string | null): Promise<SecretRedactor> {
+export async function strictOrgSecretRedactor(orgId: string | null, files: readonly ThreadWorkspaceFile[] = []): Promise<SecretRedactor> {
   if (!orgId) return createSecretRedactor([]);
   const decrypted = await decryptOrgSecrets(orgId);
   if (decrypted.skipped.length > 0) {
     throw new Error("org secret redactor unavailable");
   }
   const sourceControl = await agentSourceControlCredentials(orgId);
-  return createSecretRedactor([...decrypted.secrets.map((s) => s.value), ...sourceControlCredentialValues(sourceControl)]);
+  const selected = await resolveThreadWorkspaceFiles(orgId, files);
+  return createSecretRedactor([...decrypted.secrets.filter((secret) => secret.kind !== "workspace_file").flatMap(secretRedactionValues), ...sourceControlCredentialValues(sourceControl),
+    ...selected.flatMap((file) => file.redactionValues)]);
 }
 
 /** Decrypt exactly one named secret for a trusted control-plane consumer. This
@@ -191,6 +223,8 @@ export async function decryptOrgSecretByName(
     .where(and(eq(secrets.orgId, orgId), eq(secrets.name, name)))
     .limit(1);
   if (!row) return null;
+  // A byte-oriented workspace file is never a provider credential by name.
+  if (row.kind === "workspace_file") return null;
   try {
     return {
       name: row.name,

@@ -1,6 +1,7 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
 import { projects } from "../db/schema";
+import type { RepositoryFile } from "../workspace-files/types";
 
 export type ProjectRecord = typeof projects.$inferSelect;
 
@@ -69,7 +70,7 @@ export async function ensureProject(
     const [updated] = await exec
       .update(projects)
       .set({ repoFullName, updatedAt: new Date() })
-      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId), isNull(projects.daytonaSnapshot), isNull(projects.cubeSnapshot), isNull(projects.boxSnapshot), isNull(projects.e2bTemplate), isNull(projects.localImage)))
+      .where(and(eq(projects.id, row.id), eq(projects.orgId, orgId), isNull(projects.daytonaSnapshot), isNull(projects.cubeSnapshot), isNull(projects.boxSnapshot), isNull(projects.e2bTemplate), isNull(projects.localImage), sql`${projects.workspaceFiles} = '[]'::jsonb`))
       .returning();
     if (!updated) throw new RepositorySnapshotConflictError();
     return updated;
@@ -118,6 +119,7 @@ export async function updateProjectForOrg(
     boxSnapshot?: string | null;
     e2bTemplate?: string | null;
     localImage?: string | null;
+    workspaceFiles?: RepositoryFile[];
     /** Repository identity observed before a snapshot write. */
     expectedRepoFullName?: string | null;
   },
@@ -131,6 +133,7 @@ export async function updateProjectForOrg(
   if (patch.boxSnapshot !== undefined) set.boxSnapshot = patch.boxSnapshot;
   if (patch.e2bTemplate !== undefined) set.e2bTemplate = patch.e2bTemplate;
   if (patch.localImage !== undefined) set.localImage = patch.localImage;
+  if (patch.workspaceFiles !== undefined) set.workspaceFiles = patch.workspaceFiles;
   const [row] = await db
     .update(projects)
     .set(set)

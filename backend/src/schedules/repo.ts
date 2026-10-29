@@ -34,6 +34,7 @@ export interface ApiSchedule {
   skill_version: number | null;
   skill_content_hash: string | null;
   repos: string[];
+  workspace_file_selection: string[] | null;
   tags: string[];
   delivery: AutomationJson | null;
   notifications: AutomationJson | null;
@@ -111,6 +112,7 @@ function toSchedule(s: ScheduleRecord, lastRunAt: Date | null = s.lastFiredAt): 
     skill_version: s.skillVersion,
     skill_content_hash: s.skillContentHash,
     repos: s.repos,
+    workspace_file_selection: s.workspaceFileSelection,
     tags: s.tags,
     delivery: s.delivery,
     notifications: s.notifications,
@@ -178,6 +180,7 @@ export async function createSchedule(input: {
   skillVersion: number | null;
   skillContentHash: string | null;
   repos: string[];
+  workspaceFileSelection?: string[] | null;
   tags: string[];
   delivery: AutomationJson | null;
   notifications: AutomationJson | null;
@@ -205,6 +208,7 @@ export async function createSchedule(input: {
       skillVersion: input.skillVersion,
       skillContentHash: input.skillContentHash,
       repos: input.repos,
+      workspaceFileSelection: input.workspaceFileSelection ?? null,
       tags: input.tags,
       delivery: input.delivery,
       notifications: input.notifications,
@@ -238,6 +242,7 @@ export async function updateSchedule(
       | "skillVersion"
       | "skillContentHash"
       | "repos"
+      | "workspaceFileSelection"
       | "tags"
       | "delivery"
       | "notifications"

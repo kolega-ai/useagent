@@ -17,9 +17,10 @@ export class CodeActionAuthorityError extends Error {
 /** Also fences edits made by an older backend during a rolling deployment. */
 function scheduleConfigHash(schedule: ScheduleRecord): string {
   const { orgId, userId, botId, prompt, engine, model, skillId, skillVersion, skillContentHash,
-    repos, codePolicy, enabled } = schedule;
+    repos, codePolicy, enabled, workspaceFileSelection } = schedule;
   return createHash("sha256").update(stableJson({ orgId, userId, botId, prompt, engine, model,
-    skillId, skillVersion, skillContentHash, repos, codePolicy, enabled })).digest("hex");
+    skillId, skillVersion, skillContentHash, repos, codePolicy, enabled,
+    ...(workspaceFileSelection?.length ? { workspaceFileSelection } : {}) })).digest("hex");
 }
 
 export async function getCodeAction(key: string, exec: Executor = db): Promise<CodeActionRecord | null> {

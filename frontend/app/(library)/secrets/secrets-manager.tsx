@@ -51,7 +51,7 @@ export function SecretsManager({
   initial?: SecretMeta[] | null;
   initialError?: boolean;
 }) {
-  const [secrets, setSecrets] = useState<SecretMeta[]>(initial ?? []);
+  const [secrets, setSecrets] = useState<SecretMeta[]>((initial ?? []).filter((item) => item.kind !== "workspace_file"));
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(initial === null && !initialError);
   const [mounted, setMounted] = useState(false);
@@ -69,7 +69,7 @@ export function SecretsManager({
     setLoading(true);
     try {
       const fresh = await fetchSecrets();
-      setSecrets(fresh.slice().sort(byName));
+      setSecrets(fresh.filter((item) => item.kind !== "workspace_file").sort(byName));
       setError(false);
     } catch {
       // A connection problem, not "no secrets" — surface the distinct error.
@@ -198,11 +198,11 @@ export function SecretsManager({
           </p>
         ) : kind === "file" ? (
           <p className="text-caption-1-regular text-text-tertiary">
-            Written to a 0600 file in every sandbox this workspace boots; the env var holds its path.
+            Stored securely for supported integrations.
           </p>
         ) : (
           <p className="text-caption-1-regular text-text-tertiary">
-            Injected as an environment variable into every sandbox this workspace boots.
+            Stored securely for supported integrations.
           </p>
         )}
         {saveError && <p className="text-caption-1-regular text-text-error-primary">{saveError}</p>}
@@ -218,7 +218,7 @@ export function SecretsManager({
         </div>
       ) : secrets.length === 0 ? (
         <p className="py-6 text-body-2-regular text-text-secondary">
-          No secrets yet. Add one above to inject it into every sandbox this workspace boots.
+          No secrets yet. Add one above to store it for an integration.
         </p>
       ) : (
         <div className="flex flex-col">

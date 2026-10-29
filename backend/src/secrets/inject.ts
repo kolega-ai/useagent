@@ -268,7 +268,7 @@ export function buildInjection(
   const mode = options.mode ?? sandboxSecretMode();
   const included = decrypted.secrets.filter(
     (secret) =>
-      !isReservedSecretName(secret.name) &&
+      secret.kind !== "workspace_file" && !isReservedSecretName(secret.name) &&
       !options.excludeNames?.has(secret.name),
   );
   if (included.length === 0) {
@@ -340,7 +340,8 @@ export function buildInjection(
 export async function loadInjectedSecretRedactionValues(orgId: string): Promise<string[]> {
   const decrypted = await decryptOrgSecrets(orgId);
   const sourceControl = await agentSourceControlCredentials(orgId);
-  return [...buildInjection(decrypted, { excludeNames: PROVIDER_SECRET_NAMES }).redactionValues, ...sourceControlCredentialValues(sourceControl)];
+  return [...buildInjection(decrypted, { excludeNames: PROVIDER_SECRET_NAMES }).redactionValues,
+    ...sourceControlCredentialValues(sourceControl)];
 }
 
 /**

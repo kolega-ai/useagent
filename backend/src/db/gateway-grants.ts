@@ -23,7 +23,7 @@ export const LEGACY_GATEWAY_DATABASE_ROLE = "skynet_gateway";
  * process writes, add it HERE in the same change.
  */
 export const GATEWAY_GRANTS: readonly string[] = [
-  "GRANT SELECT ON runs, skills, skill_revisions, secrets, artifacts, provider_gateway_audit, slack_threads, thread_relationships TO useagent_gateway",
+  "GRANT SELECT ON runs, skills, skill_revisions, secrets, workspace_file_versions, artifacts, provider_gateway_audit, slack_threads, thread_relationships TO useagent_gateway",
   "GRANT UPDATE (skill_id, skill_version, skill_content_hash, updated_at) ON runs TO useagent_gateway",
   // Every UPDATE on runs fires trg_validate_batched_child_run_update (migration
   // 0077), whose function runs as the invoking role and reads

@@ -12,6 +12,7 @@ import * as Textarea from "@/components/base/textarea/textarea";
 import { useEnabledEngineConfig } from "@/components/chat/engine-picker";
 import { modelLabel, type EngineId } from "@/components/chat/types";
 import { loadRepoList } from "@/lib/repo-list";
+import { loadRepositoryFileProjects, type RepositoryFileProject } from "@/lib/repository-files";
 import { RepoMultiPicker, type RepoItem } from "@/app/(workspace)/agent/new/repo-multi-picker";
 import { cx } from "@/utils/cx";
 import type { CreateScheduleInput } from "./schedules-api";
@@ -64,6 +65,8 @@ export function AutomationEditorModal({
   const [codeDraft, setCodeDraft] = useState(true);
   const [allowSandboxActions, setAllowSandboxActions] = useState(true);
   const [repos, setRepos] = useState<RepoItem[]>([]);
+  const [projects, setProjects] = useState<RepositoryFileProject[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +82,7 @@ export function AutomationEditorModal({
     setCodeRepo(schedule?.code_policy?.repository ?? "");
     setCodeDraft(schedule?.code_policy?.draft ?? true);
     setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? true);
+    setSelectedFiles(schedule?.workspace_file_selection ?? []);
     setBusy(false);
     setError(null);
   }, [open, schedule]);
@@ -90,6 +94,8 @@ export function AutomationEditorModal({
       if (!cancelled) setRepos(items.map((item) => ({ full_name: item.full_name, name: item.name ?? item.full_name.split("/").at(-1) ?? item.full_name,
         default_branch: item.default_branch ?? "main", private: item.private })));
     }).catch(() => { if (!cancelled) setRepos([]); });
+    void loadRepositoryFileProjects().then((items) => { if (!cancelled) setProjects(items); })
+      .catch(() => { if (!cancelled) setError("Couldn't load repository files."); });
     return () => { cancelled = true; };
   }, [open]);
 
@@ -113,6 +119,7 @@ export function AutomationEditorModal({
         cron: cron.trim(),
         timezone: timezone.trim() || null,
         engine,
+        workspaceFileSelection: codeMode === "none" ? [] : selectedFiles,
         ...(model ? { model } : {}),
         ...(codeMode === "none" ? { codePolicy: null, ...(schedule?.code_policy ? { repos: [] } : {}) } : {
           repos: [codeRepo],
@@ -247,9 +254,15 @@ export function AutomationEditorModal({
             {codeMode !== "none" ? <>
               {needsSandboxAgent ? <HintText isInvalid>Choose a coding agent that runs in a sandbox.</HintText> : null}
               <RepoMultiPicker repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose repository"
-                onChange={(items) => setCodeRepo(items.at(-1) ?? "")}
+                onChange={(items) => { const next = items.at(-1) ?? ""; if (next !== codeRepo) setSelectedFiles([]); setCodeRepo(next); }}
                 onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
               {codeRepo ? <p className="break-all text-caption-1-regular text-text-secondary">{codeRepo}</p> : null}
+              {(projects.find((project) => project.repo_full_name === codeRepo)?.workspace_files ?? []).map((file) => (
+                <Checkbox key={`${file.name}:${file.path}`} size="sm" isSelected={selectedFiles.includes(file.name)}
+                  onChange={(checked) => setSelectedFiles((current) => checked ? [...new Set([...current, file.name])] : current.filter((name) => name !== file.name))}>
+                  Use {file.name} at {file.path}
+                </Checkbox>
+              ))}
               {codeMode === "publish" ? <Checkbox size="sm" isSelected={codeDraft} onChange={setCodeDraft}>Open as draft</Checkbox> :
                 codeMode === "review" ? <HintText>Reviews one open request per run and merges only the approved revision when the provider permits it.</HintText> :
                   <HintText>The agent can use connected GitHub and GitLab accounts to carry out your instructions.</HintText>}

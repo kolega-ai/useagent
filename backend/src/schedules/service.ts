@@ -33,6 +33,7 @@ import { SandboxMinutesExceededError } from "../runs/sandbox-minutes";
 import { BotsDisabledError } from "../bots/rollout";
 import { RoutineOwnerError } from "../bots/owner";
 import { asOrgAdmin } from "../provider-connections/repo";
+import { selectThreadWorkspaceFiles, WorkspaceFileError } from "../workspace-files/store";
 import { memberDisplayNames } from "../team/member-names";
 import {
   assertRunPromptLimit,
@@ -317,6 +318,9 @@ export async function createScheduleForOrg(
   await assertModelOffered(engine, model, identity.userId);
   const skill = await parseSkillPin(identity.orgId, body.skill);
   const repos = (await parseRepos(identity.orgId, body)) ?? [];
+  const workspaceFileSelection = stringArrayField(body, "workspaceFileSelection") ?? [];
+  try { await selectThreadWorkspaceFiles(identity.orgId, repos, workspaceFileSelection); }
+  catch (error) { if (error instanceof WorkspaceFileError) throw new ScheduleServiceError(400, { error: error.message }); throw error; }
   let codePolicy: AutomationCodePolicy | null;
   try {
     codePolicy = parseCodePolicy(body.codePolicy) ?? null;
@@ -349,6 +353,7 @@ export async function createScheduleForOrg(
     skillVersion: skill?.skillVersion ?? null,
     skillContentHash: skill?.skillContentHash ?? null,
     repos,
+    workspaceFileSelection,
     tags,
     delivery,
     notifications,
@@ -435,6 +440,7 @@ async function updateSchedulePatch(
     skillVersion: number | null;
     skillContentHash: string | null;
     repos: string[];
+    workspaceFileSelection: string[] | null;
     tags: string[];
     delivery: AutomationJson | null;
     notifications: AutomationJson | null;
@@ -483,6 +489,12 @@ async function updateSchedulePatch(
 
   const repos = await parseRepos(orgId, body);
   if (repos !== undefined) patch.repos = repos;
+  const workspaceFileSelection = stringArrayField(body, "workspaceFileSelection");
+  if (workspaceFileSelection !== undefined) patch.workspaceFileSelection = workspaceFileSelection;
+  if (repos !== undefined || workspaceFileSelection !== undefined) {
+    try { await selectThreadWorkspaceFiles(orgId, repos ?? current.repos, workspaceFileSelection ?? current.workspaceFileSelection ?? []); }
+    catch (error) { if (error instanceof WorkspaceFileError) throw new ScheduleServiceError(400, { error: error.message }); throw error; }
+  }
 
   const tags = stringArrayField(body, "tags");
   if (tags !== undefined) patch.tags = tags;
@@ -620,6 +632,7 @@ async function fireSchedule(
   try {
     fired = await fireScheduleWithOutcome(schedule, trigger, occurrence);
   } catch (error) {
+    if (error instanceof WorkspaceFileError) throw new ScheduleServiceError(409, { error: error.code, message: error.message });
     if (error instanceof BotsDisabledError) {
       throw new ScheduleServiceError(409, { error: error.code, retryable: false });
     }

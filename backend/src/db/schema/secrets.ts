@@ -15,7 +15,7 @@ import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core
 //    GCP service-account JSON or a PEM private key).
 // ---------------------------------------------------------------------------
 
-export const SECRET_KINDS = ["env", "file"] as const;
+export const SECRET_KINDS = ["env", "file", "workspace_file"] as const;
 export type SecretKind = (typeof SECRET_KINDS)[number];
 
 export const secrets = pgTable(
@@ -31,6 +31,7 @@ export const secrets = pgTable(
     valueCiphertext: text("value_ciphertext").notNull(),
     iv: text("iv").notNull(),
     tag: text("tag").notNull(),
+    workspaceFileVersionId: uuid("workspace_file_version_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
