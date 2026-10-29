@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { SANDBOX_NAME_PREFIX } from "../sandboxes/sandbox-names";
+import { AGENT_SOURCE_CONTROL_BIN } from "../repositories/agent-credentials";
 import type { SandboxExecuteResult, SandboxHandle, SandboxRuntimeLayout } from "../sandboxes/provider";
 import { prefetchSandboxResult, takePrefetchedSandboxResult } from "../sandboxes/command-prefetch";
 import { sandboxPlugin } from "../sandboxes/plugins";
@@ -302,9 +303,7 @@ export async function prepareCodexSubscription(input: {
   };
 }
 
-/** Start whichever Codex services the probe found missing, then wait until our
- * own processes hold all three ports. Ours still running a Codex a later install
- * replaced (stale) are stopped first: they hold their ports until killed. */
+/** Start missing services; replace owned services with obsolete startup state. */
 async function launchMissingCodexServices(
   sandbox: SandboxHandle,
   layout: SandboxRuntimeLayout,
@@ -356,8 +355,7 @@ async function launchMissingCodexServices(
   }
 }
 
-/** Kill our own Codex services left on a replaced executable (and nothing else),
- * then the ports' verdicts once none is stale. */
+/** Kill stale owned Codex services (and nothing else), then recheck the ports. */
 async function stopStaleCodexServices(
   sandbox: SandboxHandle,
   owners: readonly SandboxListenerOwner[],
@@ -438,6 +436,7 @@ export function buildCodexExecServerCommand(
   assertSafeEnvironmentId(environmentId);
   return [
     "set -eu",
+    `export PATH=${JSON.stringify(AGENT_SOURCE_CONTROL_BIN)}:"$PATH"`,
     `exec ${JSON.stringify(codexExecutable(layout))} exec-server --listen ws://0.0.0.0:${CODEX_EXEC_SERVER_PORT} --environment-id ${environmentId}`,
   ].join("\n");
 }
@@ -452,6 +451,7 @@ export function codexExecServerOwner(layout: SandboxRuntimeLayout = ROOT_RUNTIME
     executable: "codex",
     installRoot: `${prefix}/share/useagent/native-engines`,
     args: ["exec-server", "--listen", `ws://0.0.0.0:${CODEX_EXEC_SERVER_PORT}`],
+    requiredPathEntry: AGENT_SOURCE_CONTROL_BIN,
   };
 }
 

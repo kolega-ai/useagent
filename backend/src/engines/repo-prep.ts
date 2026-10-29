@@ -9,6 +9,7 @@ import { SANDBOX_NAME_PREFIX, SANDBOX_STATE_DIR } from "../sandboxes/sandbox-nam
 import type { SandboxHandle, SandboxRuntimeLayout } from "../sandboxes/provider";
 import { createHash } from "node:crypto";
 import { resolveGithubSandboxToken } from "../github/auth";
+import { AGENT_SOURCE_CONTROL_ENV } from "../repositories/agent-credentials";
 import { parseRepoRef } from "../github/repo-ref";
 import { RUN_TIMING_OUTCOMES, RUN_TIMING_STAGES } from "../runs/run-timing";
 import { hasExactGitHubRepositoryUrlProvenance } from "../resources/public-github";
@@ -74,6 +75,18 @@ async function githubAuthEnv(
     : {};
 }
 
+/** The credential is already in this sandbox; keep it out of provider command
+ * arguments, including providers that implement environment variables as shell. */
+async function sandboxHasGithubCredential(sandbox: RepoSandbox, enabled: boolean): Promise<boolean> {
+  if (!enabled) return false;
+  const path = shq(AGENT_SOURCE_CONTROL_ENV);
+  const result = await sandbox.process.executeCommand(
+    `if [ -r ${path} ]; then . ${path}; ` + '[ -n "${GH_TOKEN:-}" ] && printf available; fi; true',
+    undefined, undefined, 10,
+  );
+  return result.exitCode === 0 && result.result?.trim() === "available";
+}
+
 function shouldUseGithubCredential(
   entry: string,
   resources: readonly RunResource[],
@@ -93,17 +106,14 @@ function shouldUseGithubCredential(
  * and a resumed thread (that subdir already cloned) is a fast skip. Public repos
  * need no credential.
  *
- * TRUST BOUNDARY (narrowest practical credential): a PRIVATE clone uses the
- * backend-held GitHub token, and the sandbox is untrusted - so the token is
- * handled as narrowly as possible:
+ * A private clone uses the connected GitHub credential for this operation:
  *   - passed via GIT_CONFIG_* ENV, never in the command string / git argv (so it
  *     is not in our source, our logs, or `ps` inside the box);
  *   - applied one-shot as an http.extraHeader for THIS clone only;
  *   - NOT written to .git/config - the stored remote stays the clean https URL,
  *     so the token does not persist on the sandbox disk.
- * Only this narrow read-scoped token ever enters the sandbox; broad backend
- * credentials never do. A fresh clone that FAILS fails the run honestly rather
- * than silently leaving the user's chosen repo missing.
+ * Connected personal tokens are also made available separately to the agent.
+ * A failed clone fails the run rather than leaving the selected repo missing.
  */
 export async function ensureRepoClone(
   sandbox: RepoSandbox,
@@ -199,18 +209,14 @@ export async function ensureRepoClone(
     );
   }
 
-  // One-shot GitHub credential (an exact-repo App token, or a dev-gated local PAT). Passed via
+  // One-shot GitHub credential (an exact-repo App token, or a connected PAT). Passed via
   // GIT_CONFIG_* ENV ONLY (never the git argv / .git-config / logs / prompt), applied for THIS
   // operation and never persisted. Absent -> public repo. Shared by the switch + clone paths.
-  // Non-root providers run control commands and the agent as the same uid.
-  // Never place a backend-held repository token in that shared process space;
-  // public clones still work and private repositories fail closed at Git.
-  const authEnv = await githubAuthEnv(repo, ctx.orgId, {
-    ...options,
-    useGithubCredential: runtimeLayout.runsAsRoot
-      ? options.useGithubCredential
-      : false,
-  });
+  // A connected personal token is already on sandbox disk. App-only clones
+  // retain their existing one-shot root environment behavior.
+  const hasSandboxCredential = await sandboxHasGithubCredential(sandbox, options.useGithubCredential !== false);
+  const authEnv = hasSandboxCredential || !runtimeLayout.runsAsRoot ? {} : await githubAuthEnv(repo, ctx.orgId, options);
+  const authPrefix = hasSandboxCredential ? `. ${shq(AGENT_SOURCE_CONTROL_ENV)}; ` : "";
 
   // ABSENT or a useAgent-OWNED stale checkout: clone into a UNIQUE TEMP directory under the
   // provider runtime user's private state root, validate its origin, stamp the ownership marker,
@@ -283,7 +289,7 @@ export async function ensureRepoClone(
   let res;
   try {
     await ctx.emit({ kind: "command", label: branch ? `Cloning ${repo} (${branch})` : `Cloning ${repo}`, chip: "git" });
-    res = await sandbox.process.executeCommand(script, undefined, authEnv, 300);
+    res = await sandbox.process.executeCommand(authPrefix + script, undefined, authEnv, 300);
   }
   finally { await source?.cleanup(); }
   const out = (res.result ?? "").trim();
@@ -334,9 +340,9 @@ export async function checkoutPullRequestResources(
 
   for (const change of changes) {
     const { repository, number, revision } = change.locator;
-    const authEnv = await githubAuthEnv(repository, ctx.orgId, {
-      useGithubCredential: runtimeLayout.runsAsRoot,
-    });
+    const hasSandboxCredential = await sandboxHasGithubCredential(sandbox, true);
+    const authEnv = hasSandboxCredential || !runtimeLayout.runsAsRoot ? {} : await githubAuthEnv(repository, ctx.orgId, {});
+    const authPrefix = hasSandboxCredential ? `. ${shq(AGENT_SOURCE_CONTROL_ENV)}; ` : "";
     const dir = `${workdir}/${repository}`;
     const runtimeOwnershipMarker = runtimeUserOwnershipMarker(dir, runtimeLayout);
     const rootOwnershipChecks = runtimeLayout.runsAsRoot
@@ -380,7 +386,7 @@ export async function checkoutPullRequestResources(
       chip: "git",
     });
     const result = await sandbox.process.executeCommand(
-      script,
+      authPrefix + script,
       undefined,
       authEnv,
       120,

@@ -25,6 +25,7 @@ import { configuredRuntimeMode, runtimeModeFor } from "./permission-mode";
 import { assertReadOnlyTurnAllowed, ensureRuntimeThreadMode } from "./runtime-thread-mode";
 import { providerGatewayWired } from "../provider-gateway/sandbox-config";
 import { sandboxPlugin } from "../sandboxes/plugins";
+import { readSourceControlRevision, stampSourceControlRevision } from "../repositories/agent-credentials";
 import type { ProviderDriver } from "@useagent/agent-harness/control";
 import { sessionCapabilities } from "./capabilities";
 import {
@@ -271,6 +272,15 @@ export function makeRuntimeAdapter(engine: RuntimeEngineId, driver: ProviderDriv
         endShell?.();
         const threadId = runtimeThreadId(ctx);
         const threadExists = shell.threads.some((thread) => thread.id === threadId);
+        if (prepared.sourceControlAvailable) {
+          const previous = await readSourceControlRevision(sandbox, prepared.layout, threadId);
+          if (previous !== prepared.sourceControlRevision) {
+            const refreshed = await reloadRetainedSession({ sandbox, signal: ctx.signal, threadId, threadExists,
+              change: "Source-control credentials", changed: true, revision: prepared.sourceControlRevision });
+            if (!refreshed) throw new Error("Could not refresh the agent's source-control credentials. Retry the turn.");
+            await stampSourceControlRevision(sandbox, prepared.layout, threadId, prepared.sourceControlRevision);
+          }
+        }
         // A read-only turn never resumes a thread that may hold a session grant.
         await assertReadOnlyTurnAllowed({ threadId: ctx.threadId ?? ctx.runId, permissionMode: ctx.permissionMode, threadExists });
         if (engine === "opencode") {

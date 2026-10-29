@@ -30,6 +30,7 @@ below are relative to `backend/`.
 | Stopping a run | `src/runs/stop.ts` `stopRun`: records the cancel (`src/commands/cancel.ts` `acceptRunCancel`, which settles a queued run itself) and signals the running actor |
 | Publishing a deliverable | `src/artifacts/publish.ts` (`publishSandboxArtifact` for sandbox files, `publishTrustedArtifact` for control-plane outputs) |
 | Capabilities handed to a sandbox | `src/security/signed-capability.ts` (`mintSignedCapability`, `verifySignedCapability`) |
+| Connected source-control tokens given to an agent | `src/repositories/agent-credentials.ts` through `src/engines/sandbox-turn-preparation.ts` |
 | Ending a run that ran | `src/runs/finalize.ts` `finalizeRun`; transitions in `src/runs/run-state.ts` (`markRunStarted`, `completeRun`) |
 | Answering an engine's approval or question | `src/runs/provider-session-routes.ts` `registerProviderSessionRoutes`: checks the session binding and auth epoch, then answers the live session (no new turn) |
 | Recording engine events | `src/runs/provider-events.ts` (`drainProviderEvents`), `src/runs/canonical-events.ts`, `src/runs/canonicalization-outbox.ts` |
@@ -69,9 +70,12 @@ Seams and access:
 5. Fix the class where every caller and writer routes through; grep them all
    and fix every site. A parallel mechanism, or a fix for one channel, engine
    or provider while the shared path stays broken, is not a fix.
-6. Authorize at the effect: re-check in the same transaction as the write, on
-   every entry path (replay, delivery, dispatch). Fail closed on missing
-   identity or a failed lookup; a contested change is one conditional update.
+6. Control-plane effects re-check authority at the write on every entry path
+   (replay, delivery, dispatch). An agent's direct source-control CLI actions
+   use the connected account's token and provider permissions instead; the
+   backend cannot intercept each command once the token is in the sandbox.
+   Fail closed on missing identity or a failed lookup; a contested
+   control-plane change is one conditional update.
 7. Every ingress (web, API, Slack, bots, child sessions, schedules) goes through
    `acceptRunCommand` (`src/commands/service.ts`); the backend resolves and
    authorizes the target thread (`src/runs/thread-followups.ts`) first, so a

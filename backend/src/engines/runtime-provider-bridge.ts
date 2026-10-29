@@ -42,6 +42,8 @@ import {
   buildRootTraversalAccessCommand,
 } from "./runtime-user-permissions";
 import { buildCodexProviderConfigUpdateScript, codexProviderConfig, codexProviderConfigurationRevision, codexProviderConfigPendingPath, INSTALL_VALIDATED, parsePendingCodexProviderConfigurationResponse, readPendingCodexProviderConfigurationRevision } from "./runtime-codex-plan-config";
+import { AGENT_SOURCE_CONTROL_ENV } from "../repositories/agent-credentials";
+import { sourceControlEngineWrapper, sourceControlEngineWrapperPath } from "./source-control-tools";
 export { openCodeModelLimitsChanged } from "./opencode-model-limit-refresh";
 
 const RUNTIME_SETTINGS_PATH = `${RUNTIME_ENVIRONMENT_HOME}/userdata/settings.json`;
@@ -195,7 +197,7 @@ export function buildRuntimeProviderBootstrapCommand(
     : engine === "opencode"
       ? {
           enabled: true,
-          binaryPath: nativeBinary,
+          binaryPath: sourceControlEngineWrapperPath(layout, "opencode"),
           serverUrl: "",
           serverPassword: "",
           customModels: [],
@@ -265,10 +267,14 @@ export function buildRuntimeProviderBootstrapCommand(
 
   if (engine !== "claude") {
     const settingsPatch = { provider: engine, config: providerConfig };
+    const wrapper = sourceControlEngineWrapper(layout, engine);
+    const wrapperPath = sourceControlEngineWrapperPath(layout, engine);
     return [
       "set -eu",
       `export HOME=${JSON.stringify(layout.home)}`,
       ...installAndVerify,
+      `printf %s '${encode(wrapper)}' | base64 -d > ${JSON.stringify(wrapperPath)}`,
+      `chmod 755 ${JSON.stringify(wrapperPath)}`,
       `SETTINGS="${RUNTIME_SETTINGS_PATH}"`,
       'install -d -m 700 "$(dirname "$SETTINGS")"',
       `export PATCH_B64='${encode(JSON.stringify(settingsPatch))}'`,
@@ -317,6 +323,7 @@ export function buildRuntimeProviderBootstrapCommand(
   const wrapper = layout.runsAsRoot ? [
     "#!/bin/sh",
     "set -eu",
+    `[ ! -r ${JSON.stringify(AGENT_SOURCE_CONTROL_ENV)} ] || . ${JSON.stringify(AGENT_SOURCE_CONTROL_ENV)}`,
     `CLAUDE_UID=${CLAUDE_RUNTIME_UID}`,
     `CLAUDE_GID=${CLAUDE_RUNTIME_GID}`,
     `CLAUDE_HOME=${JSON.stringify(CLAUDE_RUNTIME_HOME)}`,
@@ -331,6 +338,7 @@ export function buildRuntimeProviderBootstrapCommand(
   ].join("\n") : [
     "#!/bin/sh",
     "set -eu",
+    `[ ! -r ${JSON.stringify(AGENT_SOURCE_CONTROL_ENV)} ] || . ${JSON.stringify(AGENT_SOURCE_CONTROL_ENV)}`,
     `export HOME=${JSON.stringify(layout.home)} USER=user LOGNAME=user`,
     ...(safeAnthropicBaseUrl ? [`export ANTHROPIC_BASE_URL=${JSON.stringify(safeAnthropicBaseUrl)}`] : []),
     `export CLAUDE_CONFIG_DIR=${JSON.stringify(safeClaudeConfigDir)}`,

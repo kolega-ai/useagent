@@ -92,6 +92,7 @@ every `packages/*/` (file: links copy a package and skip its deps).
 | Untrusted text in prompts | `backend/src/bots/prompt-safe.ts` `promptSafeJson` | hand-made delimiters |
 | Messaging channels | `backend/src/connectors/types.ts` (`Transport`, `Renderer`), `email/` as the worked example | channel logic inside run code |
 | Sandbox vendors and engines | one `packages/sandbox-*` plugin + `backend/src/sandboxes/plugins.ts`; native drivers in `backend/src/engines/index.ts` | a vendor switch in core, a substitute engine |
+| Connected source-control tokens for an agent | `backend/src/repositories/agent-credentials.ts` through shared sandbox preparation | baking tokens into images or adding credentials to prompts |
 | Backend calls from the UI | `frontend/lib/backend-fetch.ts` `backendFetch` | raw `fetch` to the backend |
 | UI primitives and type | `frontend/components/base/` and the type tokens (`frontend/AGENTS.md`) | a new kit, raw hex, `dark:` or arbitrary `text-[Npx]` |
 

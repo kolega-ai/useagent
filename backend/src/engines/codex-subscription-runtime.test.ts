@@ -26,7 +26,7 @@ import {
   prewarmCodexServices,
   previewWebSocketUrl,
 } from "./codex-subscription-runtime";
-import { buildSandboxListenerProbeCommand, LISTENER_ABSENT, LISTENER_FOREIGN, LISTENER_STALE } from "./sandbox-listener-probe";
+import { buildSandboxListenerProbeCommand, readListenerVerdicts, LISTENER_ABSENT, LISTENER_FOREIGN, LISTENER_STALE } from "./sandbox-listener-probe";
 import { SANDBOX_NAME_PREFIX } from "../sandboxes/sandbox-names";
 
 const priorGatewayUrl = process.env.PROVIDER_GATEWAY_PUBLIC_URL;
@@ -472,7 +472,7 @@ describe("T3 Codex subscription lease", () => {
     await mkdir(dirname(native), { recursive: true });
     await writeFile(native, "");
     await writeFile(foreign, "");
-    const procRoot = async (owner?: { exe: string; args: readonly string[] }) => {
+    const procRoot = async (owner?: { exe: string; args: readonly string[]; path?: string }) => {
       const proc = await mkdtemp(join(home, "proc-"));
       await mkdir(join(proc, "net"));
       const header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n";
@@ -484,17 +484,21 @@ describe("T3 Codex subscription lease", () => {
         await symlink("socket:[4242]", join(proc, "77/fd/3"));
         await symlink(owner.exe, join(proc, "77/exe"));
         await writeFile(join(proc, "77/cmdline"), `${owner.args.join("\0")}\0`);
+        await writeFile(join(proc, "77/environ"), `PATH=${owner.path ?? "/tmp/useagent-source-control/bin:/usr/bin"}\0`);
       }
       return proc;
     };
-    const probe = async (owner?: { exe: string; args: readonly string[] }) =>
-      spawnSync("sh", ["-c", `${buildCodexExecServerReadinessCommand(0, layout)} ${await procRoot(owner)}`]).status;
+    const probe = async (owner?: { exe: string; args: readonly string[]; path?: string }) => {
+      const result = spawnSync("sh", ["-c", `${buildCodexExecServerReadinessCommand(0, layout)} ${await procRoot(owner)}`]);
+      return { status: result.status, verdicts: readListenerVerdicts(result.stdout.toString(), [codexExecServerOwner(layout)]) };
+    };
     const listening = ["codex", "exec-server", "--listen", "ws://0.0.0.0:37734", "--environment-id", `${SANDBOX_NAME_PREFIX}-run-1`];
 
-    expect(await probe()).toBe(1);
-    expect(await probe({ exe: native, args: listening })).toBe(0);
-    expect(await probe({ exe: foreign, args: listening })).toBe(2);
-    expect(await probe({ exe: native, args: ["codex", "app-server", "--listen", "ws://0.0.0.0:37734"] })).toBe(2);
+    expect(await probe()).toEqual({ status: 1, verdicts: { 37734: 1 } });
+    expect(await probe({ exe: native, args: listening })).toEqual({ status: 0, verdicts: { 37734: 0 } });
+    expect(await probe({ exe: native, args: listening, path: "/usr/bin" })).toEqual({ status: 1, verdicts: { 37734: LISTENER_STALE } });
+    expect(await probe({ exe: foreign, args: listening })).toEqual({ status: 2, verdicts: { 37734: 2 } });
+    expect(await probe({ exe: native, args: ["codex", "app-server", "--listen", "ws://0.0.0.0:37734"] })).toEqual({ status: 2, verdicts: { 37734: 2 } });
   });
 
   test("reads our exec-server left on a replaced Codex as stale, and stops only that process", async () => {
@@ -823,6 +827,7 @@ describe("T3 Codex subscription lease", () => {
     expect(buildCodexExecServerCommand(`${SANDBOX_NAME_PREFIX}-run-1`)).toBe(
       [
         "set -eu",
+        'export PATH="/tmp/useagent-source-control/bin":"$PATH"',
         `exec "/usr/local/bin/codex" exec-server --listen ws://0.0.0.0:37734 --environment-id ${SANDBOX_NAME_PREFIX}-run-1`,
       ].join("\n"),
     );

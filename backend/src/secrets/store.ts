@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { secrets, type SecretKind } from "../db/schema";
 import { isReservedSecretName, isValidSecretName, openSecret, sealSecret } from "./crypto";
 import { createSecretRedactor, type SecretRedactor } from "./redact";
+import { agentSourceControlCredentials, sourceControlCredentialValues } from "../repositories/agent-credentials";
 
 // ---------------------------------------------------------------------------
 // Org-secrets data access (task #100). Values are encrypted at rest (crypto.ts)
@@ -156,7 +157,8 @@ export async function orgSecretRedactor(orgId: string | null): Promise<SecretRed
   if (!orgId) return createSecretRedactor([]);
   try {
     const decrypted = await decryptOrgSecrets(orgId);
-    return createSecretRedactor(decrypted.secrets.map((s) => s.value));
+    const sourceControl = await agentSourceControlCredentials(orgId);
+    return createSecretRedactor([...decrypted.secrets.map((s) => s.value), ...sourceControlCredentialValues(sourceControl)]);
   } catch {
     return createSecretRedactor([]);
   }
@@ -171,7 +173,8 @@ export async function strictOrgSecretRedactor(orgId: string | null): Promise<Sec
   if (decrypted.skipped.length > 0) {
     throw new Error("org secret redactor unavailable");
   }
-  return createSecretRedactor(decrypted.secrets.map((s) => s.value));
+  const sourceControl = await agentSourceControlCredentials(orgId);
+  return createSecretRedactor([...decrypted.secrets.map((s) => s.value), ...sourceControlCredentialValues(sourceControl)]);
 }
 
 /** Decrypt exactly one named secret for a trusted control-plane consumer. This

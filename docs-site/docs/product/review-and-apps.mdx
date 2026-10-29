@@ -33,14 +33,14 @@ authorization depends on the active run and its resources.
 
 ## Review
 
-A connected GitHub App supplies the repository and pull-request catalogs used
+A connected GitHub personal token or App supplies the repository and pull-request catalogs used
 by the task composer, bot repository picker, and `/review` workspace. Selected
 repositories become structured run resources and are cloned into the thread's
 sandbox after backend authorization.
 
 The review page lists open pull requests from the connected repository set. It
-does not grant write access by itself; mutations still travel through the
-approved GitHub gateway operation.
+does not grant write access by itself. An agent with a connected personal token
+can also use Git and the GitHub CLI directly in its sandbox.
 
 ## API keys are different
 

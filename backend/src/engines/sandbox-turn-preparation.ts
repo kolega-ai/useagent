@@ -1,4 +1,4 @@
-import { sandboxRuntimeLayout, type SandboxHandle } from "../sandboxes/provider";
+import { sandboxRuntimeLayout, type SandboxHandle, type SandboxRuntimeLayout } from "../sandboxes/provider";
 import { SANDBOX_STATE_DIR } from "../sandboxes/sandbox-names";
 import type { SandboxBinding } from "../sandboxes/binding";
 import { acquireThreadSandbox } from "./thread-sandbox";
@@ -20,6 +20,8 @@ import { createSecretRedactor } from "../secrets/redact";
 import { buildRuntimeIdentityPreflightCommand, resolveRuntimeWorkspaceRoot } from "./runtime-environment";
 import { dropPrefetchedSandboxResults, prefetchSandboxCommand } from "../sandboxes/command-prefetch";
 import { buildRootTraversalAccessCommand } from "./runtime-user-permissions";
+import { agentSourceControlCredentials, materializeAgentSourceControl, sourceControlCredentialRevision, sourceControlCredentialValues, AGENT_SOURCE_CONTROL_ROOT } from "../repositories/agent-credentials";
+import { ensureSourceControlTools } from "./source-control-tools";
 
 export interface SandboxTurnPreparationOptions<T> {
   readonly snapshot: string;
@@ -67,9 +69,12 @@ export interface SandboxTurnPreparationOptions<T> {
 
 export interface PreparedSandboxTurn<T> {
   readonly sandbox: SandboxHandle;
+  readonly layout: SandboxRuntimeLayout;
   readonly workdir: string;
   readonly providerState: T;
   readonly redact: ReturnType<typeof createSecretRedactor>;
+  readonly sourceControlRevision: string;
+  readonly sourceControlAvailable: boolean;
   close(): Promise<void>;
 }
 
@@ -84,7 +89,8 @@ export async function prepareSandboxTurn<T>(
   } = { acquireThreadSandbox },
 ): Promise<PreparedSandboxTurn<T>> {
   const secretInjection = await composeSecretEnv(ctx, { excludeNames: PROVIDER_SECRET_NAMES });
-  const redact = createSecretRedactor(secretInjection.redactionValues);
+  const sourceControl = await agentSourceControlCredentials(ctx.orgId);
+  const redact = createSecretRedactor([...secretInjection.redactionValues, ...sourceControlCredentialValues(sourceControl)]);
   const endSandbox = ctx.timing?.begin(`${options.timingPrefix}.sandbox_acquire`);
   // A retained sandbox's warm checks start while acquisition checks its
   // credentials; whatever this turn does not take is dropped when it ends.
@@ -113,6 +119,7 @@ export async function prepareSandboxTurn<T>(
   const endPrepare = ctx.timing?.begin(`${options.timingPrefix}.prepare`);
   let providerState: T | undefined;
   let providerPrepared = false;
+  let sourceControlAvailable = false;
   let closed = false;
   const close = async (): Promise<void> => {
     if (closed) return;
@@ -139,6 +146,21 @@ export async function prepareSandboxTurn<T>(
       await stage("sandbox_fence", () => options.prepareSandbox!(sandbox, lease.binding));
     }
     const runtimeLayout = sandboxRuntimeLayout(lease.binding.kind);
+    if (ctx.orgId) {
+      const hasCredentials = Boolean(sourceControl.github || sourceControl.gitlab);
+      let wasConfigured = false;
+      if (!hasCredentials && lease.reused) {
+        const probe = await sandbox.process.executeCommand(`test -d '${AGENT_SOURCE_CONTROL_ROOT}' && printf configured`, undefined, undefined, 10);
+        wasConfigured = probe.exitCode === 0 && probe.result?.trim() === "configured";
+      }
+      if (hasCredentials || wasConfigured) {
+        sourceControlAvailable = true;
+        await stage("source_control_tools", () => ensureSourceControlTools(sandbox, runtimeLayout, {
+          github: Boolean(sourceControl.github), gitlab: Boolean(sourceControl.gitlab),
+        }));
+        await stage("source_control_credentials", () => materializeAgentSourceControl({ sandbox, layout: runtimeLayout, credentials: sourceControl }));
+      }
+    }
     const workdir = await stage("workspace_root", () =>
       resolveRuntimeWorkspaceRoot(sandbox, runtimeLayout)
     );
@@ -254,9 +276,12 @@ export async function prepareSandboxTurn<T>(
     if (!outputBaselineRecorded) await recordOutputBaseline();
     return {
       sandbox,
+      layout: runtimeLayout,
       workdir,
       providerState: resolvedProviderState,
       redact,
+      sourceControlRevision: sourceControlCredentialRevision(sourceControl),
+      sourceControlAvailable,
       close,
     };
   } catch (error) {

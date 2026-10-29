@@ -662,7 +662,10 @@ describe("T3 provider bridge", () => {
           providers: Record<string, { binaryPath: string; launchArgs?: string }>;
           providerInstances: Record<string, unknown>;
         };
-        expect(settings.providers[engine.id]?.binaryPath).toBe(join(bin, engine.binary));
+        expect(settings.providers[engine.id]?.binaryPath).toBe(join(bin, `useagent-${engine.binary}`));
+        const wrapper = await readFile(join(bin, `useagent-${engine.binary}`), "utf8");
+        expect(wrapper).toContain("/tmp/useagent-source-control/environment");
+        expect(wrapper).toContain(join(bin, engine.binary));
         if (engine.id === "codex") {
           const revision = codexProviderConfigurationRevision(layout);
           const pendingPath = join(

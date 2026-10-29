@@ -7,6 +7,7 @@ import { findConnectedOrgIntegrationRecord, findLatestOrgIntegrationRecord } fro
 import { deleteIntegrationCredential, readIntegrationCredential, upsertIntegrationCredential } from "../integrations/credential-repo";
 import { asOrgAdmin } from "../provider-connections/repo";
 import { gitLabRequest } from "./client";
+import { publishOrgChange } from "../runs/org-signals";
 
 export const GITLAB_CONNECTION_BINDING = "gitlab.com-token-v1";
 const FORMAT = "gitlab-personal-access-token-v1";
@@ -51,7 +52,9 @@ export async function connectGitLab(orgId: string, userId: string, token: string
     }).returning();
     if (!row || row.orgId !== orgId) throw new Error("GitLab connection identity mismatch");
     await upsertIntegrationCredential({ connectionId: row.id, orgId, provider: "gitlab", externalConnectionId }, { format: FORMAT, serialized: secret }, tx);
+    return row.id;
   }));
+  if (outcome) publishOrgChange(orgId, { type: "integration_connection", action: "updated", connectionId: outcome.value, provider: "gitlab" });
   return outcome !== null;
 }
 
@@ -62,6 +65,8 @@ export async function disconnectGitLab(orgId: string, userId: string): Promise<b
       .where(and(eq(integrationConnections.orgId, orgId), eq(integrationConnections.provider, "gitlab"),
         eq(integrationConnections.runtimeBindingId, GITLAB_CONNECTION_BINDING), eq(integrationConnections.ownerType, "org"))).returning();
     if (row) await deleteIntegrationCredential(row.id, tx);
+    return row?.id ?? null;
   }));
+  if (outcome?.value) publishOrgChange(orgId, { type: "integration_connection", action: "revoked", connectionId: outcome.value, provider: "gitlab" });
   return outcome !== null;
 }

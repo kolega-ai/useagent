@@ -70,8 +70,9 @@ describe("GitLab organization connection", () => {
       }
       return new Response("not found", { status: 404 });
     });
+    const uploads: string[] = [];
     const sandbox = {
-      fs: {},
+      fs: { uploadFile: async (bytes: Buffer) => { uploads.push(bytes.toString()); } },
       process: { executeCommand: async (command: string) => ({
         result: command.includes("printf '%s\\n' \"/root/work\"") ? "/root/work"
           : command.includes("echo state:absent") ? `state:${workspaceState}` : "",
@@ -124,6 +125,7 @@ describe("GitLab organization connection", () => {
       });
       await expect(prepare()).rejects.toThrow("GitLab API returned HTTP 403");
       expect(providerStarts).toBe(0);
+      expect(uploads.some((content) => content.includes(token))).toBe(true);
       allowed = true;
       const retained = await prepare();
       expect(providerStarts).toBe(1);

@@ -438,16 +438,13 @@ describe("repo-prep: shared engine-neutral repository preparation", () => {
     expect(cloneCmd(calls)?.env).toEqual({});
   });
 
-  test("a retained production sandbox rejects PAT-only private repository preparation", async () => {
+  test("a production sandbox uses the owning organization's personal token for a private repository", async () => {
     const { sandbox, calls } = fakeSandbox({ state: "absent" });
     const { ctx } = fakeCtx();
 
-    await expect(
-      withProductionMode(() =>
-        ensureRepoClone(sandbox, "/root/work", "acme/private", ctx)
-      ),
-    ).rejects.toThrow(/retained sandbox.*configure GITHUB_APP_ID/s);
-    expect(cloneCmd(calls)).toBeUndefined();
+    await withProductionMode(() => ensureRepoClone(sandbox, "/root/work", "acme/private", ctx));
+    expect(cloneCmd(calls)?.env?.GIT_CONFIG_VALUE_0).toStartWith("Authorization: Basic ");
+    expect(cloneCmd(calls)?.cmd).not.toContain(SENTINEL);
   });
 
   test("repository preparation carries the run org and rejects a different production tenant", async () => {

@@ -104,13 +104,36 @@ For Box and local images, use the provider's non-root workspace layout:
 `/home/user/work` must be writable by `user`, and a prepared checkout belongs at
 `/home/user/work/OWNER/REPO` with the clean GitHub origin.
 
+### Source-control connections
+
+An organization admin can connect a GitHub personal access token and a
+GitLab.com personal or group access token in **Settings > Integrations**. A
+GitHub App is optional. Give the accounts the repository and pull or merge
+request permissions the agents need; GitLab's connection requires `api`.
+Tokens are encrypted in the existing integration store and cannot be read back
+through the settings API. The connected tokens are made available to agents in
+their isolated sandboxes, so `git`, `gh`, and `glab` can act as the connected
+accounts. They are not restricted to the repository selected in the composer.
+
+The native image recipe installs pinned GitHub and GitLab CLIs. Existing custom
+images should include `git`, `gh`, and `glab`, or allow the sandbox to download
+the pinned CLI releases on its first turn. Tokens are supplied after sandbox
+allocation and must not be baked into a snapshot or template. Model-provider
+credentials continue to use the provider gateway.
+
+To test the live E2B path, set `E2B_API_KEY`, `E2B_TEMPLATE_ID`,
+`USEAGENT_SMOKE_GITHUB_TOKEN`, and `USEAGENT_SMOKE_GITLAB_TOKEN` in a private
+shell environment and run `cd backend && bun test/manual/source-control-e2b-smoke.ts`.
+The template must contain the native runtime and Kolega Code. The smoke creates
+and deletes a paid test sandbox, calls the providers' account APIs, and runs two
+turns of a native session against a synthetic model. It also attempts private
+Git access when each account has an accessible private repository.
+
 ### Private GitLab.com projects
 
 An organization admin can connect GitLab.com in **Settings > Integrations**
-using a personal or group access token with the `api` scope. Use a dedicated
-token with access only to the projects the organization needs. UseAgent checks
-the token and stores it encrypted in the existing integration credential store;
-it is never sent to the browser after saving or placed in a sandbox.
+using a personal or group access token with the `api` scope. UseAgent checks
+the token and stores it encrypted in the existing integration credential store.
 
 In a new thread, open **Repositories** and search for the project name, group,
 or subgroup. Results display the complete GitLab namespace so projects with
@@ -125,8 +148,8 @@ When a thread finishes, open **Thread actions > Create GitLab merge request**.
 Enter a title and choose whether the request is a draft, then prepare and
 download the frozen patch for review. **Approve and create** creates a new
 `useagent/` branch and merge request from those exact changes. This action is
-available with Kolega Code and the other supported engines; the agent does not
-receive the GitLab credential. The connected account must be allowed to push a
+available with Kolega Code and the other supported engines. The connected
+account must be allowed to push a
 new branch and create a merge request in the selected project. If GitLab's
 response is lost, use **Check and retry** to reconcile the existing branch and
 request before creating anything else.
@@ -167,11 +190,11 @@ owner from the organization, revokes pending repository actions. A change to an
 already running agent's native full-access mode does not retract commands that
 have already been authorized.
 
-For GitHub, connect an installation with permission to read the repository,
-write contents and create and merge pull requests. For GitLab.com, connect an
+For GitHub, connect a personal token or an installation with permission to read
+the repository, write contents and create and merge pull requests. For GitLab.com, connect an
 account with the `api` scope and permission to push branches, create merge
-requests and merge them. The provider write credential stays in the trusted
-backend. Use provider branch protection and required checks as appropriate for
+requests and merge them. The agent also has access to connected personal tokens
+inside the sandbox. Use provider branch protection and required checks as appropriate for
 the connected account; an account with bypass privileges can bypass provider
 rules. No model-provider key is added to the sandbox by this feature.
 

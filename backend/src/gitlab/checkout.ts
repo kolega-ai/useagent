@@ -1,6 +1,6 @@
-// Copy an authorized GitLab checkout into the sandbox as a private archive. The
-// long-lived GitLab token is used only by the trusted control plane's Git
-// process; the sandbox receives repository data and a clean remote URL.
+// Copy an authorized GitLab checkout into the sandbox as a private archive.
+// The control plane's checkout keeps a clean remote URL. Connected personal
+// tokens are also made available separately for the agent's Git and CLI use.
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SandboxHandle, SandboxRuntimeLayout } from "../sandboxes/provider";
@@ -64,7 +64,7 @@ export async function createGitLabArchive(input: {
   });
 }
 
-/** Supply both sides of a review without putting a provider credential in the sandbox. */
+/** Supply both sides of a review using the control plane's checkout. */
 export async function prepareGitLabReviewHistory(input: {
   directory: string; git: TrustedGit; review: AutomationReviewTarget; repository: string; branch: string | null;
 }): Promise<void> {

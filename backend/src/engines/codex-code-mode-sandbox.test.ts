@@ -40,6 +40,7 @@ describe("Codex code-mode host in the sandbox", () => {
         await symlink(`socket:[${inode}]`, join(proc, `${pid}/fd/7`));
         await symlink(exe, join(proc, `${pid}/exe`));
         await writeFile(join(proc, `${pid}/cmdline`), `${[exe, ...args].join("\0")}\0`);
+        await writeFile(join(proc, `${pid}/environ`), "PATH=/tmp/useagent-source-control/bin:/usr/bin\0");
       };
       await process(41, 5001, host, hostOwner!.args);
       await process(42, 5002, layout.bunExecutable, forwarderArgs);
@@ -52,6 +53,10 @@ describe("Codex code-mode host in the sandbox", () => {
     };
 
     expect(await probe(forwarderOwner!.args)).toEqual({ status: 0, verdicts: { 37736: 0, 37737: 0 } });
+    const oldHost = await procRoot(forwarderOwner!.args);
+    await writeFile(join(oldHost, "41/environ"), "PATH=/usr/bin\0");
+    const oldResult = spawnSync("sh", ["-c", `${buildSandboxListenerProbeCommand([hostOwner!, forwarderOwner!], 0)} ${oldHost}`]);
+    expect(readListenerVerdicts(oldResult.stdout.toString(), [hostOwner!, forwarderOwner!])).toEqual({ 37736: 3, 37737: 0 });
     // Something else on the host's port at every address shadows the host: foreign.
     const shadowed = await procRoot(forwarderOwner!.args);
     await writeFile(join(shadowed, "net/tcp"), `${await Bun.file(join(shadowed, "net/tcp")).text()}   3: 00000000:9368 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 5004 1\n`);
