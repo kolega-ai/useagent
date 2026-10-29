@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import { requestFromOperator } from "../operator/access";
+import { listSecretMeta } from "../secrets/store";
+import { parseRepositoryFiles } from "../workspace-files/validation";
 import {
   ensureProject,
   getProjectForOrg,
@@ -25,6 +27,7 @@ function toProject(project: ProjectRecord) {
     box_snapshot: project.boxSnapshot,
     e2b_template: project.e2bTemplate,
     local_image: project.localImage,
+    workspace_files: project.workspaceFiles,
     archived: project.archived,
     sort_order: project.sortOrder,
     created_at: project.createdAt.toISOString(),
@@ -69,7 +72,17 @@ projectsRoutes.patch("/:id", async (c) => {
   }
   const imageFields = ["daytona_snapshot", "cube_snapshot", "box_snapshot", "e2b_template", "local_image"] as const;
   const changingImage = imageFields.some((field) => body[field] !== undefined);
-  if (changingImage && !(await requestFromOperator(c))) return c.json({ error: "not_found" }, 404);
+  const changingFiles = body.workspace_files !== undefined;
+  if ((changingImage || changingFiles) && !(await requestFromOperator(c))) return c.json({ error: "not_found" }, 404);
+  const workspaceFiles = changingFiles ? parseRepositoryFiles(body.workspace_files) : undefined;
+  if (changingFiles && !workspaceFiles) return c.json({ error: "invalid repository files or destination paths" }, 400);
+  if (workspaceFiles?.length) {
+    if (!current.repoFullName) return c.json({ error: "files require a repository-backed project" }, 400);
+    const known = await listSecretMeta(c.get("orgId"));
+    if (workspaceFiles.some((file) => !known.some((secret) => secret.name === file.name && secret.kind === "workspace_file"))) {
+      return c.json({ error: "a selected file is unavailable" }, 400);
+    }
+  }
   for (const field of imageFields) {
     const value = body[field];
     if (value === undefined || value === null) continue;
@@ -88,9 +101,10 @@ projectsRoutes.patch("/:id", async (c) => {
     boxSnapshot: body.box_snapshot as string | null | undefined,
     e2bTemplate: body.e2b_template as string | null | undefined,
     localImage: body.local_image as string | null | undefined,
-    expectedRepoFullName: changingImage ? current.repoFullName : undefined,
+    workspaceFiles: workspaceFiles ?? undefined,
+    expectedRepoFullName: changingImage || changingFiles ? current.repoFullName : undefined,
   });
-  if (!project && changingImage) return c.json({ error: "project changed while saving the image; reload and retry" }, 409);
+  if (!project && (changingImage || changingFiles)) return c.json({ error: "project changed while saving settings; reload and retry" }, 409);
   if (!project) return c.json({ error: "project not found" }, 404);
   return c.json(toProject(project));
 });

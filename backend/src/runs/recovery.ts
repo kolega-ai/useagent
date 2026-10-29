@@ -309,7 +309,8 @@ async function recoverRunningRun(
   }
 
   const lastStepAt = await getLastStepAt(cmd.runId);
-  const redact = await orgSecretRedactor(cmd.orgId);
+  const run = await getRun(cmd.runId);
+  const redact = await orgSecretRedactor(cmd.orgId, run?.workspaceFiles ?? []);
   const metadata = recoveryMetadata(cmd.expectedSandbox, cmd.runThreadId, cmd.sandboxId);
   const handle: HarnessSessionHandle = {
     provider: binding!.provider,
@@ -539,7 +540,7 @@ export async function runDueReconciles(
     const authCurrent = binding
       ? await providerSessionAuthIsCurrent({ binding, orgId: run.orgId, userId: run.userId })
       : false;
-    const redact = await orgSecretRedactor(run.orgId);
+    const redact = await orgSecretRedactor(run.orgId, run.workspaceFiles);
     const result = await probeParked(
       entry,
       authCurrent ? binding : null,

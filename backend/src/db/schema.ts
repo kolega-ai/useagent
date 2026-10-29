@@ -10,6 +10,7 @@ export * from "./schema/canonical";
 export * from "./schema/skills";
 export * from "./schema/learning";
 export * from "./schema/secrets";
+export * from "./schema/workspace-files";
 export * from "./schema/api-keys";
 export * from "./schema/integrations";
 export * from "./schema/provider-connections";

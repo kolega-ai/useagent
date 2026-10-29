@@ -43,7 +43,7 @@ export function registerProviderSessionRoutes(routes: Hono<AppEnv>): void {
       return c.json({ error: "question replies cannot add run resources" }, 400);
     }
     try {
-      const redact = await strictOrgSecretRedactor(run.orgId);
+      const redact = await strictOrgSecretRedactor(run.orgId, run.workspaceFiles);
       const result = await replyToRuntimeQuestion({
         runId: run.id,
         threadId: run.threadId,

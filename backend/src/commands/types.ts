@@ -30,6 +30,7 @@ export interface RunCommandIntent {
   /** Stable identities from the ingress (upload IDs for HTTP, Slack file IDs
    * for Slack), not provider-generated staging metadata. */
   readonly attachmentIds: readonly string[];
+  readonly workspaceFileSelection?: readonly string[] | null;
   readonly memoryScope: MemoryScope | null;
   /** The caller's explicit permission mode; null (or absent, for legacy callers)
    * means it delegated to the parent's mode or the operator's posture. */
@@ -118,6 +119,8 @@ export interface RunCommandInput {
     /** Pre-uploaded tenant/user-owned files atomically claimed by this run.
      * IDs, not browser-provided paths or bytes, participate in intent. */
     readonly attachmentIds?: readonly string[];
+    /** Server-owned selection from the automation; null inherits repository files. */
+    readonly workspaceFileSelection?: readonly string[] | null;
     /** Team-memory pool for the run — resolved at the boundary (explicit choice,
      *  parent inheritance, or the "org" default). Never taken from the sandbox. */
     readonly memoryScope: MemoryScope;

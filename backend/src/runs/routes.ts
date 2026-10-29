@@ -86,6 +86,7 @@ import { reasoningEffortSupportForRun, resolveReasoningEffort } from "./reasonin
 import { acceptExistingThreadFollowup, ThreadFollowupTargetError } from "./thread-followups";
 import { machineUnavailable, runLocationChoice } from "./run-location";
 import { SpendAllowanceExceededError } from "./spend";
+import { WorkspaceFileError } from "../workspace-files/store";
 export type { RunCreateBody } from "./run-create-policy";
 export const runsRoutes = new Hono<AppEnv>();
 runsRoutes.use("*", orgScope);
@@ -117,7 +118,6 @@ export async function handleRunCreate(
   const promptResult = boundedRunPrompt(body.prompt);
   if (!promptResult.ok) return c.json({ error: promptResult.error }, promptResult.status);
   const prompt = promptResult.prompt;
-
   const attachments = runAttachmentIds(body.attachments, Boolean(c.get("userId")));
   if (!attachments.ok) return c.json({ error: attachments.error }, attachments.status);
   const attachmentIds = attachments.ids;
@@ -130,7 +130,6 @@ export async function handleRunCreate(
   const selection = runModelAndEngine(body);
   if (!selection.ok) return c.json({ error: selection.error }, 400);
   const { model: requestedModel, engine: requestedEngine } = selection;
-
   const id = crypto.randomUUID();
 
   // Threading: a reply passes `parent_run_id`. Resolve it org-scoped (a
@@ -439,6 +438,7 @@ export async function handleRunCreate(
         ? await acceptInternalRunCommand({ ...commandInput, origin: options.origin })
         : await acceptRunCommand(commandInput);
   } catch (error) {
+    if (error instanceof WorkspaceFileError) return c.json({ error: error.code, message: error.message }, 409);
     if (error instanceof RunPromptTooLargeError) {
       return c.json({ error: error.code }, 413);
     }

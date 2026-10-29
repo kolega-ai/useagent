@@ -68,6 +68,7 @@ export interface ScheduleRecord {
   skill_version: number | null;
   skill_content_hash: string | null;
   repos: string[];
+  workspace_file_selection?: string[] | null;
   tags: string[];
   delivery: Record<string, unknown> | null;
   notifications: Record<string, unknown> | null;

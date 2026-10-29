@@ -3,7 +3,7 @@ import { SECRET_KINDS, type SecretKind } from "../db/schema";
 import type { AppEnv } from "../http";
 import { orgAdminScope, orgScope } from "../middleware/org";
 import { isReservedSecretName, isValidSecretName } from "./crypto";
-import { deleteSecret, listSecretMeta, upsertSecret } from "./store";
+import { deleteSecret, listSecretMeta, upsertSecret, upsertWorkspaceFile } from "./store";
 
 // ---------------------------------------------------------------------------
 // Org Secrets API (task #100). Org-scoped exactly like the knowledge/skills
@@ -21,6 +21,26 @@ secretsRoutes.use("*", orgScope);
 secretsRoutes.get("/", async (c) => {
   const items = await listSecretMeta(c.get("orgId"));
   return c.json({ secrets: items });
+});
+
+// Files have a separate byte-preserving upload path and are never returned by
+// the API. They are delivered only when a repository explicitly selects them.
+secretsRoutes.put("/files/:name", orgAdminScope, async (c) => {
+  const name = c.req.param("name");
+  if (!isValidSecretName(name) || isReservedSecretName(name)) return c.json({ error: "invalid file name" }, 400);
+  const maxBytes = 5 * 1024 * 1024;
+  const declared = Number(c.req.header("content-length") ?? 0);
+  if (Number.isFinite(declared) && declared > maxBytes + 65536) return c.json({ error: "file exceeds 5 MB" }, 413);
+  let value: unknown;
+  try { value = (await c.req.formData()).get("file"); } catch { return c.json({ error: "invalid file upload" }, 400); }
+  if (!(value instanceof File)) return c.json({ error: "file is required" }, 400);
+  if (value.size > maxBytes) return c.json({ error: "file exceeds 5 MB" }, 413);
+  try {
+    return c.json(await upsertWorkspaceFile(c.get("orgId"), name, new Uint8Array(await value.arrayBuffer())));
+  } catch (error) {
+    if (error instanceof Error && error.message === "A secret with this name has a different type") return c.json({ error: error.message }, 409);
+    throw error;
+  }
 });
 
 // Upsert a secret value by name. The name must be an env-var identifier; the
@@ -56,15 +76,18 @@ secretsRoutes.put("/:name", orgAdminScope, async (c) => {
   if (body.kind !== undefined) {
     if (
       typeof body.kind !== "string" ||
-      !(SECRET_KINDS as readonly string[]).includes(body.kind)
+      !(SECRET_KINDS as readonly string[]).includes(body.kind) || body.kind === "workspace_file"
     ) {
       return c.json({ error: `kind must be one of: ${SECRET_KINDS.join(", ")}` }, 400);
     }
     kind = body.kind as SecretKind;
   }
 
-  const meta = await upsertSecret(c.get("orgId"), name, value, kind);
-  return c.json(meta);
+  try { return c.json(await upsertSecret(c.get("orgId"), name, value, kind)); }
+  catch (error) {
+    if (error instanceof Error && error.message === "A secret with this name has a different type") return c.json({ error: error.message }, 409);
+    throw error;
+  }
 });
 
 // Delete a secret by name (org-scoped). 404 when the org has no such secret.

@@ -121,6 +121,48 @@ the pinned CLI releases on its first turn. Tokens are supplied after sandbox
 allocation and must not be baked into a snapshot or template. Model-provider
 credentials continue to use the provider gateway.
 
+### Repository files
+
+An operator can upload an encrypted file and place it into a repository checkout
+for a task or automation. For example, Kolega Code's tests load `.env` from the
+repository root:
+
+1. In **Settings > Infrastructure > Repository files**, give the file a name
+   such as `KOLEGA_TEST_ENV`, choose the local file, and select **Store file**.
+   File content is write-only and encrypted with `SECRETS_ENCRYPTION_KEY`. Files
+   can contain arbitrary bytes and can be up to 5 MiB.
+2. Choose the repository, select the stored file, enter a repository-relative
+   path such as `.env`, and select **Save mapping**. Multiple files and nested
+   paths are supported. A new ordinary task using that repository receives the
+   mappings; an automation selects the files it needs in its editor.
+3. UseAgent prepares the checkout, places the selected files with mode 0600, and
+   starts the agent. It adds each destination to Git's local exclude file so an
+   ordinary `git add` does not include it. The agent and its programs can read
+   the file. Its values are not passed in the task prompt, and known dotenv
+   values are redacted from recorded output. Programs can still transform and
+   disclose values, so redaction is not a guarantee against every disclosure.
+4. Upload another file under the same name to replace it for new threads.
+   Existing threads retain their original encrypted version, including if a
+   lost sandbox must be recreated. Editing a repository mapping affects only
+   new threads. The retained file is not overwritten on a follow-up. Remove a
+   mapping before deleting its stored file; existing threads keep their pinned
+   encrypted version. The encrypted version history is kept in the database.
+
+The destination must be inside the checkout. A different existing file or a
+symlink destination fails with a diagnostic instead of overwriting workspace
+content. Files are supplied after allocation and are never baked into images or
+warm pools. A `.env` file is not sourced by UseAgent; the test runner or program
+that needs it must load it itself. This path is distinct from the model gateway:
+explicitly selected files can contain provider keys for live tests, while the
+coding agent's own model connection continues to use the gateway.
+
+To verify the E2B file transport with synthetic content, set `E2B_API_KEY` and
+optionally `E2B_TEMPLATE_ID` in the trusted backend shell, then run
+`bun test/manual/workspace-files-e2b-smoke.ts` from `backend/`. The smoke creates
+two temporary billable sandboxes, clones the public Kolega Code repository in
+each, and deletes the sandboxes afterwards. It checks delivery,
+binary bytes, isolation, Git exclusion, symlink rejection and retained changes.
+
 To test the live E2B path, set `E2B_API_KEY`, `E2B_TEMPLATE_ID`,
 `USEAGENT_SMOKE_GITHUB_TOKEN`, and `USEAGENT_SMOKE_GITLAB_TOKEN` in a private
 shell environment and run `cd backend && bun test/manual/source-control-e2b-smoke.ts`.

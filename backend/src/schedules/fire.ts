@@ -131,6 +131,7 @@ export async function fireScheduleWithOutcome(
     requestedRepos: home ? [] : schedule.repos,
     requestedResources: [],
     attachmentIds: [],
+    workspaceFileSelection: schedule.workspaceFileSelection ?? [],
     memoryScope,
     skillId: home ? null : schedule.skillId,
     skillVersion: home ? null : schedule.skillVersion,
@@ -238,6 +239,7 @@ export async function fireScheduleWithOutcome(
         parentRunId: home?.id ?? null,
         threadId,
         repos: [...intake.repos],
+        workspaceFileSelection: schedule.workspaceFileSelection ?? [],
         resolvedResources: intake.resources,
         ...(automationPermission ? { permissionMode: automationPermission } : {}),
         // Plain scheduled runs are fresh roots with organization memory; a bot

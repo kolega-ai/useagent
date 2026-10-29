@@ -60,6 +60,7 @@ export const schedules = pgTable(
     // They are not pasted into prompts; the run command receives repos as typed
     // execution context and tools return bounded summaries.
     repos: jsonb("repos").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    workspaceFileSelection: jsonb("workspace_file_selection").$type<string[] | null>(),
     tags: text("tags")
       .array()
       .notNull()

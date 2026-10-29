@@ -46,6 +46,7 @@ export interface CreateScheduleInput {
   engine: string;
   model?: string;
   repos?: string[];
+  workspaceFileSelection?: string[];
   codePolicy?: AutomationCodePolicy | null;
 }
 
@@ -63,6 +64,9 @@ export async function createSchedule(
   }
   const saved = (await res.json()) as ScheduleRecord;
   verifyCodePolicy(saved, input.codePolicy, false);
+  if (input.workspaceFileSelection?.length && JSON.stringify(saved.workspace_file_selection) !== JSON.stringify(input.workspaceFileSelection)) {
+    throw new AutomationRefusal("The backend did not confirm the selected files. Refresh after the backend is updated.");
+  }
   return saved;
 }
 
@@ -80,6 +84,9 @@ export async function updateSchedule(
   if (!res.ok) throw await failure(res, "update automation");
   const saved = (await res.json()) as ScheduleRecord;
   verifyCodePolicy(saved, patch.codePolicy, true);
+  if (patch.workspaceFileSelection && JSON.stringify(saved.workspace_file_selection) !== JSON.stringify(patch.workspaceFileSelection)) {
+    throw new AutomationRefusal("The backend did not confirm the selected files. Refresh after the backend is updated.");
+  }
   return saved;
 }
 

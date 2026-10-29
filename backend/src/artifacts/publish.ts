@@ -49,7 +49,8 @@ import {
   isProtectedInjectedSecretPath,
   loadInjectedSecretRedactionValues,
 } from "../secrets/inject";
-import { containsSignedCapability } from "../secrets/redact";
+import { resolveThreadWorkspaceFiles } from "../workspace-files/store";
+import { assertNoInjectedSecretBytes } from "../workspace-files/artifact-protection";
 import {
   validatedTrustedImageBytes,
   type ValidatedTrustedImageOutput,
@@ -155,6 +156,9 @@ async function resolvePublishablePath(
   signal?: AbortSignal,
 ): Promise<string> {
   const requested = checkedSourcePath(value, workspaceRoot);
+  if ((run.workspaceFiles ?? []).some((file) => posix.join(workspaceRoot, file.repository, file.path) === requested)) {
+    throw new Error("Repository secret files cannot be published as artifacts");
+  }
   if (!run.sandboxId) throw new Error("no sandbox is attached to this run");
   const resolved = await awaitWithSignal(
     () => resolveSandboxFilePath(run.sandboxId!, requested, run),
@@ -170,18 +174,6 @@ async function resolvePublishablePath(
     throw new Error("protected secret paths and dotenv files cannot be published as artifacts");
   }
   return resolved;
-}
-
-function assertNoInjectedSecretBytes(bytes: Uint8Array, redactionValues: readonly string[]): void {
-  const content = Buffer.from(bytes);
-  if (containsSignedCapability(content.toString("utf8"))) {
-    throw new Error("artifact content contains a signed runtime capability and cannot be published");
-  }
-  for (const value of redactionValues) {
-    if (value && content.includes(Buffer.from(value))) {
-      throw new Error("artifact content contains protected secret material and cannot be published");
-    }
-  }
 }
 
 function compatibleRevision(
@@ -431,15 +423,17 @@ export async function publishSandboxArtifact(input: {
     );
   }
 
-  const redactionValues = await awaitWithSignal(
+  const selectedFiles = await awaitWithSignal(() => resolveThreadWorkspaceFiles(input.orgId, run.workspaceFiles ?? []), opts.signal);
+  const currentRedactionValues = await awaitWithSignal(
     () => loadInjectedSecretRedactionValues(input.orgId),
     opts.signal,
   );
+  const redactionValues = [...currentRedactionValues, ...selectedFiles.flatMap((item) => item.redactionValues)];
   const file = await awaitWithSignal(
     () => downloadSandboxFile(run.sandboxId!, sourcePath, MAX_ARTIFACT_BYTES, run),
     opts.signal,
   );
-  assertNoInjectedSecretBytes(file.bytes, redactionValues);
+  assertNoInjectedSecretBytes(file.bytes, redactionValues, selectedFiles);
   const digest = createHash("sha256").update(file.bytes).digest("hex");
   const name = safeName(sourcePath, input.name);
   const contentType = contentTypeForName(name);
@@ -453,7 +447,7 @@ export async function publishSandboxArtifact(input: {
         opts.signal,
       )
     : null;
-  if (editable) assertNoInjectedSecretBytes(editable.bytes, redactionValues);
+  if (editable) assertNoInjectedSecretBytes(editable.bytes, redactionValues, selectedFiles);
   let workpieceState = workpieceKind
     ? buildInitialWorkpieceState({
         kind: workpieceKind,
@@ -707,8 +701,9 @@ export async function publishTrustedArtifact(input: {
   if (bytes.byteLength === 0) throw new Error("trusted output is empty");
   if (bytes.byteLength > MAX_ARTIFACT_BYTES) throw new Error("trusted output is too large");
 
+  const selectedFiles = await resolveThreadWorkspaceFiles(input.orgId, run.workspaceFiles ?? []);
   const redactionValues = await loadInjectedSecretRedactionValues(input.orgId);
-  assertNoInjectedSecretBytes(bytes, redactionValues);
+  assertNoInjectedSecretBytes(bytes, [...redactionValues, ...selectedFiles.flatMap((item) => item.redactionValues)], selectedFiles);
   const digest = createHash("sha256").update(bytes).digest("hex");
   const name = input.output.name;
   const contentType = input.output.contentType;

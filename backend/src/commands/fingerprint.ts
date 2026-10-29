@@ -79,6 +79,7 @@ export function runIntentFingerprint(intent: RunCommandIntent): string {
   // person's machine is not the same turn as one on the cloud); like the mode
   // it joins the hash only when chosen, so every earlier fingerprint holds.
   if (intent.runLocation) fields.push(["run_location", intent.runLocation]);
+  if (intent.workspaceFileSelection?.length) fields.push(["workspace_files", intent.workspaceFileSelection]);
   if (intent.expectedSandbox) {
     fields.push([
       intent.expectedSandbox.version,

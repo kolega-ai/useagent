@@ -11,7 +11,7 @@ export type SecretKind = (typeof SECRET_KINDS)[number];
 
 export interface SecretMeta {
   name: string;
-  kind: SecretKind;
+  kind: SecretKind | "workspace_file";
   createdAt: string;
   updatedAt: string;
 }

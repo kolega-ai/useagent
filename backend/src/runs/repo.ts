@@ -38,6 +38,7 @@ import { executionGraphEnabled } from "./execution-graph-switch";
 import { parseRepoRef } from "../github/repo-ref";
 import type { RunResource } from "../resources/types";
 import { ensureProject } from "../projects/repo";
+import { selectThreadWorkspaceFiles } from "../workspace-files/store";
 import { listUploadsForRuns, type RunUploadDescriptor } from "../uploads/repo";
 import { publicRunCondition } from "./visibility";
 import { getCustomerRunForOrg } from "./run-state";
@@ -218,6 +219,7 @@ export async function createRun(
     parentRunId: string | null;
     threadId: string;
     repos: string[];
+    workspaceFileSelection?: readonly string[] | null;
     resolvedResources?: readonly RunResource[];
     /** Team-memory pool for the run. Resolved server-side at the run-creation
      *  boundary (explicit choice, parent inheritance, or the "org" default). */
@@ -262,12 +264,15 @@ export async function createRun(
       : null;
   // Replies inherit the root selection, including null on legacy threads.
   const [root] = input.id === input.threadId ? [] : await exec
-    .select({ repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryE2bTemplate: runs.repositoryE2bTemplate, repositoryLocalImage: runs.repositoryLocalImage })
+    .select({ repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryE2bTemplate: runs.repositoryE2bTemplate, repositoryLocalImage: runs.repositoryLocalImage, workspaceFiles: runs.workspaceFiles })
     .from(runs)
     .where(and(eq(runs.threadId, input.threadId), eq(runs.id, input.threadId),
       input.orgId === null ? isNull(runs.orgId) : eq(runs.orgId, input.orgId)))
     .limit(1);
   const repositorySnapshot = input.id === input.threadId ? project?.daytonaSnapshot ?? null : root?.repositorySnapshot ?? null;
+  const workspaceFiles = input.id === input.threadId
+    ? input.orgId ? await selectThreadWorkspaceFiles(input.orgId, input.repos ?? [], input.workspaceFileSelection, exec) : []
+    : root?.workspaceFiles ?? [];
   await exec.insert(runs).values({
     id: input.id,
     prompt: input.prompt,
@@ -292,6 +297,7 @@ export async function createRun(
     repositoryBoxSnapshot: input.id === input.threadId ? project?.boxSnapshot ?? null : root?.repositoryBoxSnapshot ?? null,
     repositoryE2bTemplate: input.id === input.threadId ? project?.e2bTemplate ?? null : root?.repositoryE2bTemplate ?? null,
     repositoryLocalImage: input.id === input.threadId ? project?.localImage ?? null : root?.repositoryLocalImage ?? null,
+    workspaceFiles,
     parentRunId: input.parentRunId,
     threadId: input.threadId,
     repos: input.repos ?? [],
