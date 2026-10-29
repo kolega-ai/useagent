@@ -71,7 +71,12 @@ export function makePiAdapter(dependencies: PiAdapterDependencies = defaults): E
           capabilities,
           executionCapabilities,
           generation: PI_BRIDGE_GENERATION,
-          startMetadata: { workdir: prepared.workdir, runtime: prepared.providerState },
+          startMetadata: { workdir: prepared.workdir, runtime: {
+            ...prepared.providerState,
+            fingerprint: prepared.sourceControlAvailable
+              ? `${prepared.providerState.fingerprint}:${prepared.sourceControlRevision}`
+              : prepared.providerState.fingerprint,
+          } },
           persistSession: async (providerSession) => {
             if (!ctx.saveProviderSession) throw new Error("Session persistence is unavailable");
             await ctx.saveProviderSession(providerSession);

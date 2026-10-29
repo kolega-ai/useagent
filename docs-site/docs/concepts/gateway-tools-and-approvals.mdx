@@ -19,12 +19,12 @@ through the gateway.
   />
 </div>
 
-*The gateway process (:3202) is the only surface a sandbox can reach; credentials never cross the boundary, and human approval mints one-shot capabilities.*
+*Gateway tools use run-bound capabilities. Connected source-control tokens are also available to coding agents in their sandbox.*
 
 ## Gateway
 
 A backend trust boundary that performs privileged work for a sandbox without
-placing long-lived provider or database credentials inside it. The sandbox asks;
+placing model-provider or database credentials inside it. The sandbox asks;
 the gateway decides and acts.
 
 ### Gateway process

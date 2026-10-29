@@ -1,6 +1,6 @@
 ---
 title: GitHub integration
-description: How repositories are selected, authenticated with a GitHub App, cloned server-side, and read by agents in a run.
+description: How repositories are selected, connected with a personal token or GitHub App, and used by agents in a run.
 sidebar:
   order: 3
 ---
@@ -24,8 +24,8 @@ When GitHub is not configured at all, `GET /api/repos` returns
 gracefully.
 
 :::note
-**Org binding.** GitHub credentials are process configuration, so the
-deployment-wide connection is bound to exactly one product organization via
+**Org binding.** A personal token connected in Settings belongs to that product
+organization. A deployment-wide connection is bound to one organization via
 `GITHUB_TENANT_ORG_ID`. When
 GitHub is configured, repo and branch listing for any other organization returns
 `403` with "GitHub repository access is not available to this organization", and
@@ -33,22 +33,13 @@ a configured deployment with no tenant id set returns a setup error asking for
 `GITHUB_TENANT_ORG_ID`.
 :::
 
-## Authenticated with a GitHub App
+## Connecting an account
 
-Access is configured through a GitHub App installation rather than a personal
-token, so private organization repositories are reachable without a human pasting
-a PAT. The backend mints an installation token for the organization and scopes
-access to it. Credential resolution has three distinct lanes:
-
-- **Backend-only GitHub calls** use PAT over App over anonymous: an explicit
-  token wins, then a configured App mints an installation token, then public
-  access.
-- **The repository picker and branch browser** deliberately prefer the App over
-  a broader deployment PAT, so the offered catalog matches what a run can
-  actually open.
-- **A retained sandbox** only ever receives an exact-repository App installation
-  token. Production refuses PAT-only deployments outright; local development
-  keeps the PAT convenience behind the verified dev-mode gate.
+An organization admin can save a personal token in Settings. It is encrypted in
+the integration store and the connected account supplies repository discovery,
+checkout, `git`, and `gh`. The coding agent can use the token's permissions in
+its sandbox. Existing GitHub App installations continue to work; an App is not
+required for a personal-token connection.
 
 ## Server-side clones
 
@@ -60,11 +51,10 @@ git-data surface is not dependable for organization installations.
 
 ## In a run
 
-Inside a run, GitHub is reached through gateway tools bound to the run's
-repositories: pull-request and issue reads scoped to what the run is allowed to
-touch. Repository binding is validated against an allowlist, and the same
-allowlist governs binding whether a run starts from the web composer or from a
-[Slack](/channels/slack) message.
+Inside a run, gateway tools provide repository-bound pull-request and issue
+reads. With a personal token connected, the coding agent can also use `gh` and
+`git` directly with the connected account's permissions. The same account is
+available to runs started from the web composer or from a [Slack](/channels/slack) message.
 
 :::note
 The [review workspace](/product/review-and-apps#review) at `/review` is the

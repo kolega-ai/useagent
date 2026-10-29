@@ -12,6 +12,7 @@ import {
   GITHUB_NATIVE_RUNTIME_BINDING_ID,
   githubNativeConnectionConfigFromEnv,
 } from "../integrations/github-native-backend";
+import { GITHUB_PERSONAL_CONNECTION_BINDING } from "./personal-connection";
 
 // ---------------------------------------------------------------------------
 // Real GitHub repository listing — the source for the New Task composer's repo
@@ -78,7 +79,7 @@ const cache = new Map<string, { at: number; listing: GithubCatalogListing }>();
  *  App path's rotating installation token does not change the scope, so it is
  *  intentionally absent from the key. */
 function scopeKey(orgId: string, auth: GithubAuth): string {
-  return `${orgId}|${auth.connectionId ?? "legacy"}|${auth.owner ?? ""}|${auth.source}`;
+  return `${orgId}|${auth.connectionId ?? "legacy"}|${auth.owner ?? ""}|${auth.source}|${auth.revision ?? ""}`;
 }
 
 /** Legacy deployment-wide credential ownership check. Tenant GitHub App
@@ -100,6 +101,10 @@ export function githubOrgAccessError(orgId: string): string | null {
 /** Accept an org-owned customer App installation before consulting the legacy
  * deployment-wide credential boundary. */
 export async function githubOrgAccessErrorForOrg(orgId: string): Promise<string | null> {
+  const personal = await findConnectedOrgIntegrationRecord({
+    orgId, provider: "github", runtimeBindingId: GITHUB_PERSONAL_CONNECTION_BINDING,
+  });
+  if (personal) return null;
   const tenant = await findConnectedOrgIntegrationRecord({
     orgId,
     provider: "github",

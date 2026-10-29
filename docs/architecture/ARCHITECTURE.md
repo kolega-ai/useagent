@@ -180,7 +180,8 @@ The gateway re-resolves exactly one currently-running authorized row before a to
 (`backend/src/knowledge/gateway/run-authorization.ts:L15-L27`,
 `backend/src/knowledge/gateway/run-authorization.ts:L40-L76`).
 
-Production sandbox secret delivery is **gateway-only**, not dotenv injection:
+Production organizational secret delivery is **gateway-only**. Connected
+source-control tokens are a separate agent-facing credential:
 
 - `sandboxSecretMode` forbids compatibility mode outside development and otherwise defaults
   production to `gateway_only` (`backend/src/secrets/inject.ts:L128-L144`).
@@ -188,8 +189,9 @@ Production sandbox secret delivery is **gateway-only**, not dotenv injection:
   sandbox env, file list, and exposed names are empty (`backend/src/secrets/inject.ts:L238-L263`).
 - Gateway-only materialization is a no-op, so it does not touch sandbox env, rc files, or the
   protected secret directory (`backend/src/secrets/inject.ts:L470-L480`).
-- Provider credentials are always withheld from untrusted sandboxes; trusted gateway tools or the
-  provider gateway resolve them server-side (`backend/src/secrets/inject.ts:L159-L184`).
+- Model and infrastructure credentials stay on the trusted side. Connected GitHub and GitLab
+  personal tokens are delivered after sandbox allocation for the agent's Git and CLI commands
+  (`backend/src/repositories/agent-credentials.ts`).
 - The checked-in host configuration explicitly sets `SANDBOX_SECRET_MODE=gateway_only` and writes
   a separate root-owned gateway environment (`infra/self-host/configure-host.sh:L222-L243`,
   `infra/self-host/configure-host.sh:L296-L305`).

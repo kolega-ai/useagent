@@ -266,25 +266,21 @@ describe("repository-scoped installation token mint", () => {
     );
   });
 
-  test("production refuses to send a PAT into a retained sandbox", async () => {
+  test("production uses a personal token assigned to the owning organization", async () => {
     delete process.env.GITHUB_APP_ID;
     delete process.env.GITHUB_APP_PRIVATE_KEY;
     process.env.GITHUB_TOKEN = "ghp_broad_deployment_token";
     await withProductionMode("false", async () => {
-      await expect(resolveGithubSandboxToken("upstream-org/widget", "org-loop")).rejects.toThrow(
-        /retained sandbox.*configure GITHUB_APP_ID.*Contents: read/s,
-      );
+      await expect(resolveGithubSandboxToken("upstream-org/widget", "org-loop")).resolves.toBe("ghp_broad_deployment_token");
     });
   });
 
-  test("NODE_ENV=production cannot be overridden to allow a PAT into a sandbox", async () => {
+  test("production still requires organization ownership when development mode is enabled", async () => {
     delete process.env.GITHUB_APP_ID;
     delete process.env.GITHUB_APP_PRIVATE_KEY;
     process.env.GITHUB_TOKEN = "ghp_broad_deployment_token";
     await withProductionMode("true", async () => {
-      await expect(resolveGithubSandboxToken("upstream-org/widget", "org-loop")).rejects.toThrow(
-        /retained sandbox.*configure GITHUB_APP_ID/s,
-      );
+      await expect(resolveGithubSandboxToken("upstream-org/widget", "org-other")).rejects.toThrow(/not available to this organization/);
     });
   });
 

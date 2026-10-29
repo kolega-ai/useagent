@@ -7,6 +7,7 @@ import { recordProviderEvent } from "../runs/provider-events";
 import { runtimeDevModeEnabled } from "../security/runtime-secrets";
 import { isReservedSecretName } from "./crypto";
 import { decryptOrgSecrets, type DecryptedSecrets } from "./store";
+import { agentSourceControlCredentials, sourceControlCredentialValues } from "../repositories/agent-credentials";
 
 // ---------------------------------------------------------------------------
 // Sandbox secret delivery (task #100). Production defaults to gateway-only:
@@ -165,7 +166,8 @@ const GOOGLE_PROJECT_ENV_NAMES = [
 ] as const;
 const GOOGLE_PROJECT_ID_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 
-/** Provider credentials never cross into an untrusted sandbox. */
+/** Model and cloud provider secrets remain on the gateway path. Connected
+ * source-control tokens use the separate agent-credentials delivery seam. */
 export const PROVIDER_SECRET_NAMES = new Set([
   // External cloud credentials stay in the trusted control plane. Sandboxes use
   // run-bound gateway tools such as gcs_list_buckets instead of raw key files.
@@ -337,7 +339,8 @@ export function buildInjection(
  * composeSecretEnv wrapper: a lookup failure must not permit unscanned bytes. */
 export async function loadInjectedSecretRedactionValues(orgId: string): Promise<string[]> {
   const decrypted = await decryptOrgSecrets(orgId);
-  return buildInjection(decrypted, { excludeNames: PROVIDER_SECRET_NAMES }).redactionValues;
+  const sourceControl = await agentSourceControlCredentials(orgId);
+  return [...buildInjection(decrypted, { excludeNames: PROVIDER_SECRET_NAMES }).redactionValues, ...sourceControlCredentialValues(sourceControl)];
 }
 
 /**

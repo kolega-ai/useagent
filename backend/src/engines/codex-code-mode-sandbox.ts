@@ -5,6 +5,7 @@
 // a private file the plane rewrites every run. The backend tunnels the
 // app-server's gRPC through it (provider-connections/codex-code-mode-bridge.ts).
 import { SANDBOX_NAME_PREFIX } from "../sandboxes/sandbox-names";
+import { AGENT_SOURCE_CONTROL_BIN } from "../repositories/agent-credentials";
 import type { SandboxRuntimeLayout } from "../sandboxes/provider";
 import { sandboxBunExecutable } from "./sandbox-bun";
 import type { SandboxListenerOwner } from "./sandbox-listener-probe";
@@ -108,6 +109,7 @@ export function codexCodeModeOwners(layout: SandboxRuntimeLayout): readonly Sand
       executable: "codex-code-mode-host",
       installRoot: paths.nativeRoot,
       args: ["--listen", `grpc://${CODEX_CODE_MODE_HOST_ADDRESS}:${CODEX_CODE_MODE_HOST_PORT}`],
+      requiredPathEntry: AGENT_SOURCE_CONTROL_BIN,
     },
     {
       address: "0.0.0.0",
@@ -145,6 +147,7 @@ export function buildCodexCodeModeLaunchCommand(
   const forwarderArgs = forwarder!.args.map((arg) => JSON.stringify(arg)).join(" ");
   return [
     "set -eu",
+    `export PATH=${JSON.stringify(AGENT_SOURCE_CONTROL_BIN)}:"$PATH"`,
     `install -d -m 700 ${JSON.stringify(paths.directory)}`,
     ...(start.forwarder
       ? [

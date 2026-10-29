@@ -2,6 +2,7 @@
 // stdio; session state remains in the attached sandbox and is loaded by id.
 import type { SandboxHandle } from "../sandboxes/provider";
 import type { ExpectedSandboxBinding } from "../sandboxes/expected-binding";
+import { AGENT_SOURCE_CONTROL_ENV } from "../repositories/agent-credentials";
 import { AcpSessionControl, type AcpPermission } from "./acp-session";
 import {
   acpProcessSessionPrefix,
@@ -24,7 +25,7 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function acpLaunchCommand(runtime: AcpRuntime): string {
+export function acpLaunchCommand(runtime: AcpRuntime, sourceControlEnv = AGENT_SOURCE_CONTROL_ENV): string {
   const env: Record<string, string> = {
     HOME: runtime.home,
     PATH: "/usr/local/bin:/usr/bin:/bin",
@@ -38,7 +39,9 @@ export function acpLaunchCommand(runtime: AcpRuntime): string {
     KOLEGA_CODE_ENDPOINT_MAX_OUTPUT: "65536",
     ...(runtime.style === "openai_responses" ? { KOLEGA_CODE_ENDPOINT_THINKING: "openai_responses_reasoning" } : {}),
   };
-  const command = `exec env -i ${Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} ${shellQuote(runtime.executable)} acp --permission-mode ask`;
+  const launch = `[ ! -r ${shellQuote(sourceControlEnv)} ] || . ${shellQuote(sourceControlEnv)}; ` +
+    `exec ${shellQuote(runtime.executable)} acp --permission-mode ask`;
+  const command = `exec env -i ${Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} /bin/sh -c ${shellQuote(launch)}`;
   return runtime.runAsUser
     ? `exec su -s /bin/sh ${shellQuote(runtime.runAsUser)} -c ${shellQuote(command)}`
     : command;

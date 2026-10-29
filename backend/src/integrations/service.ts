@@ -45,6 +45,7 @@ import {
 } from "./slack-native-backend";
 import { publishOrgChange } from "../runs/org-signals";
 import { gitlabIntegrationBackend } from "../gitlab/integration-backend";
+import { githubPersonalIntegrationBackend } from "../github/personal-integration-backend";
 
 export interface ExecutableIntegrationAction {
   readonly connectionId: string;
@@ -68,6 +69,7 @@ function defaultDependencies(): IntegrationServiceDependencies {
     delegatedBackends: [
       gitlabIntegrationBackend,
       ...(github ? [createGithubDelegatedConnectionBackend(github)] : []),
+      githubPersonalIntegrationBackend,
       ...(slack ? [createSlackDelegatedConnectionBackend(slack)] : []),
       ...(oomol ? [createOomolProjectConnectorBackend(oomol)] : []),
       ...(openConnector ? [createOpenConnectorBackend(openConnector)] : []),

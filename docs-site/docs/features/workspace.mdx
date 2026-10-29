@@ -36,14 +36,14 @@ supports them. A completed recording can be published as an MP4 artifact; the
 live desktop connection itself is not a replayed canonical event. See
 [Sandboxes and desktop](/concepts/sandboxes-and-desktop).
 
-## Repositories without pasted tokens
+## Repositories and source-control tools
 
 GitHub arrives through the platform integration, not through secrets pasted
 into a prompt. The org's repositories are listed and cloned in-run through
 gateway tools (`github_repositories`, `github_clone_repository`), with
-pull-request and issue reads bound to the run's repository. Provider
-credentials stay on the trusted side; the sandbox receives what a clone needs,
-when it needs it. Details in [GitHub
+pull-request and issue reads bound to the run's repository. A connected personal
+token is available to the coding agent in its sandbox for `git` and the provider
+CLI. Details in [GitHub
 integration](/platform/github-integration).
 
 ## Secrets, injected and announced

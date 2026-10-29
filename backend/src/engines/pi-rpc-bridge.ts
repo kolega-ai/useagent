@@ -12,6 +12,7 @@ import {
 import type { SandboxHandle } from "../sandboxes/provider";
 import { ExpectedSandboxMismatchError } from "../sandboxes/binding";
 import type { ExpectedSandboxBinding } from "../sandboxes/expected-binding";
+import { AGENT_SOURCE_CONTROL_ENV } from "../repositories/agent-credentials";
 import { PI_CODING_AGENT_VERSION, type PreparedPiRuntime } from "./pi-runtime-config";
 import {
   cleanupOwnedPiTransports,
@@ -31,22 +32,24 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function piRpcCommand(input: {
+export function piRpcCommand(input: {
   readonly workdir: string;
   readonly runtime: PreparedPiRuntime;
   readonly resumeSessionFile?: string;
-}): string {
+}, sourceControlEnv = AGENT_SOURCE_CONTROL_ENV): string {
   const resume = input.resumeSessionFile
     ? ` --resume ${shellQuote(input.resumeSessionFile)}`
     : "";
-  const command =
-    `exec env -i HOME=${shellQuote(input.runtime.home)} PATH=/usr/local/bin:/usr/bin:/bin ` +
-    `PI_CODING_AGENT_DIR=${shellQuote(`${input.runtime.home}/agent`)} ` +
-    `${shellQuote(input.runtime.bunExecutable)} ${shellQuote(input.runtime.executable)} ` +
+  const launch =
+    `[ ! -r ${shellQuote(sourceControlEnv)} ] || . ${shellQuote(sourceControlEnv)}; ` +
+    `exec ${shellQuote(input.runtime.bunExecutable)} ${shellQuote(input.runtime.executable)} ` +
     `--mode rpc --cwd ${shellQuote(input.workdir)} ` +
     `--model ${shellQuote(input.runtime.model.selector)} --no-title --no-lsp ` +
     `--no-extensions --no-skills --no-rules --auto-approve ` +
     `--tools read,write,bash,task${resume}`;
+  const command =
+    `exec env -i HOME=${shellQuote(input.runtime.home)} PATH=/usr/local/bin:/usr/bin:/bin ` +
+    `PI_CODING_AGENT_DIR=${shellQuote(`${input.runtime.home}/agent`)} /bin/sh -c ${shellQuote(launch)}`;
   return input.runtime.runAsUser
     ? `exec su -s /bin/sh ${shellQuote(input.runtime.runAsUser)} -c ${shellQuote(command)}`
     : command;

@@ -839,7 +839,9 @@ describe("Pi RPC frame parsing", () => {
       },
     });
 
-    expect(sent[0]).toContain("--cwd '/home/user/work'");
+    expect(sent[0]).toContain("--cwd");
+    expect(sent[0]).toContain("/home/user/work");
+    expect(sent[0]).toContain("/tmp/useagent-source-control/environment");
     expect(sent[0]).toContain("HOME='/home/user/.useagent/pi'");
     expect(sent[0]).not.toContain("su -s");
     expect(sent[0]).not.toContain("/root");

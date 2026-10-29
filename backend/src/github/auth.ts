@@ -22,6 +22,7 @@ import {
   GITHUB_NATIVE_RUNTIME_BINDING_ID,
   githubNativeConnectionConfigFromEnv,
 } from "../integrations/github-native-backend";
+import { githubPersonalConnection } from "./personal-connection";
 
 // ---------------------------------------------------------------------------
 // One place that turns configured credentials into concrete bearer tokens.
@@ -38,6 +39,8 @@ export interface GithubAuth {
   source: GithubAuthSource;
   /** Internal connection identity used to derive opaque catalog references. */
   connectionId?: string | null;
+  /** Changes when a personal connection is rotated, invalidating its catalog. */
+  revision?: string | null;
 }
 
 /** One org-scoped GitHub credential resolved once and passed through every
@@ -136,12 +139,13 @@ export async function resolveGithubAuth(): Promise<GithubAuth> {
 
 /**
  * Resolve the credential used by the repository picker and branch browser.
- * When an App is configured it must win over a broader deployment PAT because
- * retained production sandboxes also require App-scoped repository access.
- * This keeps the offered catalog identical to what a run can actually open.
+ * An organization-connected personal token takes precedence. Existing App
+ * installations keep their catalog and scoped clone behavior.
  */
 export async function resolveGithubCatalogAuth(orgId?: string): Promise<GithubAuth> {
   if (orgId) {
+    const personal = await githubPersonalConnection(orgId);
+    if (personal) return { token: personal.token, owner: personal.account, source: "pat", connectionId: personal.connectionId, revision: personal.revision };
     const tenant = await resolveTenantGithubAuth(orgId);
     if (tenant) return tenant.auth;
     if (githubConfig().token || githubAppConfig()) {
@@ -174,17 +178,16 @@ export async function resolveGithubToken(): Promise<string | null> {
 }
 
 /**
- * Resolve the only credential allowed to cross into a retained sandbox.
- * GitHub App auth deliberately wins over a configured PAT here because the App
- * can mint an exact-repository, read-only token. Production refuses PAT-only
- * deployments; local development keeps the old convenience path behind the
- * existing verified dev-mode gate.
+ * Resolve the credential for repository preparation. A connected personal
+ * token takes precedence; existing App installations retain their scoped token.
  */
 export async function resolveGithubSandboxToken(
   repository: string,
   orgId?: string | null,
 ): Promise<string | null> {
   if (orgId) {
+    const personal = await githubPersonalConnection(orgId);
+    if (personal) return personal.token;
     const tenant = await resolveTenantGithubAuth(orgId);
     if (tenant) {
       return (
@@ -216,22 +219,30 @@ export async function resolveGithubSandboxToken(
     return (await getRepositoryInstallationToken(repository, app)).token;
   }
 
-  if (!pat) return null;
-  if (process.env.NODE_ENV !== "production" && devModeEnabled()) return pat;
-  throw new Error(
-    `cannot prepare ${repository} in a retained sandbox with a deployment-wide GitHub token; ` +
-      "configure GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, install the App on this repository, " +
-      "and grant Contents: read",
-  );
+  return pat;
 }
 
-/** Resolve the exact-repository write credential used only by the primary
- * backend publication worker. This function is intentionally not reachable
- * from sandbox configuration or the restricted gateway process. */
+/** Resolve a personal token for agent CLI access. App credentials stay on the
+ * existing App path; a deployment token must belong to the current product org. */
+export async function resolveGithubAgentToken(orgId: string): Promise<string | null> {
+  const personal = await githubPersonalConnection(orgId);
+  if (personal) return personal.token;
+  const latest = await findLatestOrgIntegrationRecord({ orgId, provider: "github", runtimeBindingId: GITHUB_NATIVE_RUNTIME_BINDING_ID });
+  if (latest?.status === "revoked") return null;
+  const { token } = githubConfig();
+  if (!token) return null;
+  const tenant = githubTenantOrgId();
+  if (tenant) return tenant === orgId ? token : null;
+  return process.env.NODE_ENV !== "production" && devModeEnabled() ? token : null;
+}
+
+/** Resolve the write credential used by the existing publication worker. */
 export async function resolveGithubPublicationToken(
   repository: string,
   orgId: string,
 ): Promise<string> {
+  const personal = await githubPersonalConnection(orgId);
+  if (personal) return personal.token;
   const tenant = await resolveTenantGithubAuth(orgId);
   if (tenant) {
     return (
@@ -251,6 +262,6 @@ export async function resolveGithubPublicationToken(
     return (await getRepositoryPublicationToken(repository, app)).token;
   }
   const { token: pat } = githubConfig();
-  if (pat && process.env.NODE_ENV !== "production" && devModeEnabled()) return pat;
-  throw new Error("GitHub publication requires an organization-scoped GitHub App connection");
+  if (pat && (githubTenantOrgId() === orgId || (process.env.NODE_ENV !== "production" && devModeEnabled() && !githubTenantOrgId()))) return pat;
+  throw new Error("GitHub publication requires a connected personal token or GitHub App");
 }

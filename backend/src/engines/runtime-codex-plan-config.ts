@@ -2,15 +2,15 @@ import { createHash } from "node:crypto";
 import type { SandboxHandle, SandboxRuntimeLayout } from "../sandboxes/provider";
 import { RUNTIME_ENVIRONMENT_HOME, restartRuntimeEnvironment } from "./runtime-environment";
 import { invalidateRuntimeEnvironmentAccess } from "./runtime-environment-client";
+import { sourceControlEngineWrapperPath } from "./source-control-tools";
 
 export const CODEX_PLAN_LAUNCH_ARGS = "-c tools.update_plan.enabled=true";
 const PENDING_PATH = `${RUNTIME_ENVIRONMENT_HOME}/caches/useagent-codex-provider-config-pending`;
 
 export function codexProviderConfig(layout: SandboxRuntimeLayout) {
-  const prefix = layout.runsAsRoot ? "/usr/local" : `${layout.home}/.local`;
   return {
     enabled: true,
-    binaryPath: `${prefix}/bin/codex`,
+    binaryPath: sourceControlEngineWrapperPath(layout, "codex"),
     homePath: "~/.codex",
     shadowHomePath: "",
     launchArgs: CODEX_PLAN_LAUNCH_ARGS,

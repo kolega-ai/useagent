@@ -36,6 +36,7 @@ import { claudeProviderGatewayEnvironment } from "../provider-gateway/sandbox-co
 import { BROWSER_LAUNCH_SCRIPT, desktopCdpRelaySource } from "../engines/desktop-cdp-relay";
 import { SANDBOX_STATE_DIR } from "./sandbox-names";
 import { buildDesktopLaunchScript, DESKTOP_REQUIRED_BINARIES } from "../engines/desktop-workstation";
+import { sourceControlToolInstallCommand } from "../engines/source-control-tools";
 
 /** Box accepts uploads of a few MB; larger files travel in parts and are joined in the sandbox. */
 const UPLOAD_PART_BYTES = 3 * 1024 * 1024;
@@ -347,8 +348,8 @@ export function nativeImageSteps(
     {
       name: "boot",
       files: [{ path: runtimeEnvironmentBootPath(layout), bytes: Buffer.from(buildRuntimeEnvironmentBootScript(env, layout), "utf8") }],
-      command: `chmod 0755 ${q(runtimeEnvironmentBootPath(layout))}`,
-      timeoutSeconds: 30,
+      command: `${sourceControlToolInstallCommand(layout, { github: true, gitlab: true, pinned: true })}\nchmod 0755 ${q(runtimeEnvironmentBootPath(layout))}`,
+      timeoutSeconds: 300,
     },
     {
       name: "pi",
