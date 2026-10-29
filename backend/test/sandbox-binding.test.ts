@@ -445,6 +445,8 @@ describe("sandbox binding", () => {
     const userRun = await json<{ id: string }>("/api/runs", { method: "POST", cookies, body: { prompt: "Personal.", engine: "mock" } });
     await setRunSandbox(serverRun.body.id, "srv_gone", { kind: "daytona", credential: "env" });
     await setRunSandbox(userRun.body.id, "bx_personal", { kind: "box", credential: "user" });
+    await db.update(runs).set({ status: "completed" }).where(eq(runs.id, serverRun.body.id));
+    await db.execute(sql`update sandbox_leases set state = 'released' where run_id = ${serverRun.body.id}`);
 
     // The deployment provider's authoritative listing returned neither id (everything else stays live).
     const others = (await listCurrentRetainedSandboxMappings()).map((m) => m.sandboxId).filter((id) => id !== "srv_gone" && id !== "bx_personal");
