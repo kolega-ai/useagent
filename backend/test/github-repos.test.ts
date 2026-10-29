@@ -15,6 +15,7 @@ const githubEnvKeys = [
   "GITHUB_PAT",
   "GITHUB_ORG",
   "GITHUB_OWNER",
+  "GITHUB_ALLOWED_OWNERS",
   "GITHUB_APP_ID",
   "GITHUB_APP_PRIVATE_KEY",
   "GITHUB_TENANT_ORG_ID",
@@ -88,6 +89,27 @@ describe("github listing — unconfigured is a graceful no-op", () => {
 });
 
 describe("github listing — resolved tenant access", () => {
+  test("an optional owner filter applies to the catalog and its cache", async () => {
+    clearGithubEnv();
+    let fetches = 0;
+    globalThis.fetch = async () => {
+      fetches++;
+      return Response.json([
+        { id: 1, full_name: "kolega-ai/app", name: "app", private: true, default_branch: "main" },
+        { id: 2, full_name: "evankolega/tool", name: "tool", private: true, default_branch: "main" },
+        { id: 3, full_name: "another-owner/private", name: "private", private: true, default_branch: "main" },
+      ]);
+    };
+    const access = { orgId: "org-owner-filter", token: "fixture", owner: null, source: "pat" as const, connectionId: "connection" };
+    process.env.GITHUB_ALLOWED_OWNERS = "Kolega-AI, evankolega";
+    expect((await listReposWithAccess(access)).repos.map((repo) => repo.full_name)).toEqual(["evankolega/tool", "kolega-ai/app"]);
+    process.env.GITHUB_ALLOWED_OWNERS = "another-owner";
+    expect((await listReposWithAccess(access)).repos.map((repo) => repo.full_name)).toEqual(["another-owner/private"]);
+    delete process.env.GITHUB_ALLOWED_OWNERS;
+    expect((await listReposWithAccess(access)).repos).toHaveLength(3);
+    expect(fetches).toBe(3);
+  });
+
   test("uses the supplied tenant token instead of resolving deployment auth", async () => {
     clearGithubEnv();
     let authorization = "";

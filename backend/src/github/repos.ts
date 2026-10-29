@@ -1,4 +1,4 @@
-import { githubConfigured, githubTenantOrgId } from "../env";
+import { githubAllowedOwners, githubConfigured, githubTenantOrgId } from "../env";
 import {
   resolveGithubCatalogAuth,
   type GithubAuth,
@@ -79,7 +79,8 @@ const cache = new Map<string, { at: number; listing: GithubCatalogListing }>();
  *  App path's rotating installation token does not change the scope, so it is
  *  intentionally absent from the key. */
 function scopeKey(orgId: string, auth: GithubAuth): string {
-  return `${orgId}|${auth.connectionId ?? "legacy"}|${auth.owner ?? ""}|${auth.source}|${auth.revision ?? ""}`;
+  const allowedOwners = githubAllowedOwners();
+  return `${orgId}|${auth.connectionId ?? "legacy"}|${auth.owner ?? ""}|${auth.source}|${auth.revision ?? ""}|${allowedOwners ? [...allowedOwners].toSorted().join(",") : "*"}`;
 }
 
 /** Legacy deployment-wide credential ownership check. Tenant GitHub App
@@ -278,9 +279,10 @@ async function fetchRepos(
         maxPages,
       );
     }
+    const allowedOwners = githubAllowedOwners();
     return {
       items: page.items
-        .filter((r) => !r.archived)
+        .filter((r) => !r.archived && (!allowedOwners || allowedOwners.has(r.full_name.split("/", 1)[0]!.toLowerCase())))
         .map(toRepoInfo)
         .toSorted((a, b) => a.full_name.localeCompare(b.full_name)),
       nextCursor: page.nextCursor,

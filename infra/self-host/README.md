@@ -115,6 +115,13 @@ through the settings API. The connected tokens are made available to agents in
 their isolated sandboxes, so `git`, `gh`, and `glab` can act as the connected
 accounts. They are not restricted to the repository selected in the composer.
 
+To limit GitHub repository discovery to specific accounts, set the backend's
+`GITHUB_ALLOWED_OWNERS` to a comma-separated list, for example
+`kolega-ai,evankolega`. Matching is case-insensitive and applies to the picker
+and repository catalog. An unset value leaves discovery unchanged. This limits
+what UseAgent lists; it does not change the connected token's permissions in
+the sandbox.
+
 The native image recipe installs pinned GitHub and GitLab CLIs. Existing custom
 images should include `git`, `gh`, and `glab`, or allow the sandbox to download
 the pinned CLI releases on its first turn. Tokens are supplied after sandbox
