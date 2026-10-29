@@ -3,6 +3,7 @@ import {
   autoApplyEdits,
   autoApplyEditsHint,
   choiceForMode,
+  defaultPermissionMode,
   modeForChoice,
   modeWithAutoApply,
   permissionModeFor,
@@ -40,12 +41,15 @@ describe("permission mode model", () => {
     expect(permissionModeFor("codex", "read-only")).toBe("read-only");
   });
 
-  test("Kolega offers Plan and Guard, never silently enables bypass", () => {
+  test("Kolega offers explicit full access alongside Plan and Guard", () => {
     expect(permissionModeOffered("kolega", "read-only")).toBe(true);
     expect(permissionModeOffered("kolega", "approval-required")).toBe(true);
-    expect(permissionModeOffered("kolega", "full-access")).toBe(false);
+    expect(permissionModeOffered("kolega", "full-access")).toBe(true);
     expect(permissionModeOffered("kolega", "auto-accept-edits")).toBe(false);
-    expect(permissionModeFor("kolega", "full-access")).toBe("approval-required");
+    expect(permissionModeFor("kolega", "full-access")).toBe("full-access");
+    expect(permissionModeFor("kolega", "auto-accept-edits")).toBe("approval-required");
+    expect(defaultPermissionMode("kolega")).toBe("approval-required");
+    expect(defaultPermissionMode("codex")).toBe("full-access");
   });
 
   test("the edits switch says what it really lets through on each engine", () => {

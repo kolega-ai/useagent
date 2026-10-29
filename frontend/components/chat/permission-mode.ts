@@ -45,8 +45,13 @@ export function modeWithAutoApply(mode: PermissionMode, applyEdits: boolean): Pe
  *  rule (permissionModeSupported): Pi's bridge mediates no approvals, so nothing
  *  below Full access can be enforced there and the run would be refused. */
 export function permissionModeOffered(engine: string | undefined, mode: PermissionMode): boolean {
-  if (engine === "kolega") return mode === "read-only" || mode === "approval-required";
+  if (engine === "kolega") return mode === "read-only" || mode === "approval-required" || mode === "full-access";
   return mode === "full-access" || engine !== "pi";
+}
+
+/** Keep the existing approval default for this native adapter. */
+export function defaultPermissionMode(engine: string | undefined): PermissionMode {
+  return engine === "kolega" ? "approval-required" : "full-access";
 }
 
 /** The mode a composer sends for `engine`: the one chosen when the engine can

@@ -28,7 +28,7 @@ const server = Bun.serve({
     return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" } });
   },
 });
-const proc = Bun.spawn(["sh", "-c", acpLaunchCommand({ executable, home: root, model: "deepseek-flash", style: "openai_responses", mode: "build", runAsUser: null, spoolDirectory: `${root}/spool` })], {
+const proc = Bun.spawn(["sh", "-c", acpLaunchCommand({ executable, home: root, model: "deepseek-flash", style: "openai_responses", mode: "build", permission: "ask", runAsUser: null, spoolDirectory: `${root}/spool` })], {
   stdin: "pipe", stdout: "pipe", stderr: "pipe", cwd: root,
 });
 let messages = 0;

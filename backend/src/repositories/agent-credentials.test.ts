@@ -22,7 +22,7 @@ describe("agent source-control credentials", () => {
       await chmod(executable, 0o755);
       const layout = { home, workdir: join(home, "work"), runsAsRoot: false };
       const commands = [
-        acpLaunchCommand({ executable, home, model: "fixture", style: "openai_responses", mode: "build", runAsUser: null, spoolDirectory: root }, join(auth, "environment")),
+        acpLaunchCommand({ executable, home, model: "fixture", style: "openai_responses", mode: "build", permission: "ask", runAsUser: null, spoolDirectory: root }, join(auth, "environment")),
         piRpcCommand({ workdir: home, runtime: { executable: "/unused", bunExecutable: executable, home, runAsUser: null,
           fingerprint: "fixture", knowledgeTools: false, model: { provider: "openai", modelId: "fixture", selector: "openai/fixture" } } }, join(auth, "environment")),
         sourceControlEngineWrapper(layout, "codex", join(auth, "environment")),

@@ -52,8 +52,16 @@ export function runtimeModeFor(mode: PermissionMode): RuntimeMode {
 export function permissionModeSupported(engine: string, mode?: PermissionMode): boolean {
   const canonical = canonicalEngine(engine);
   if (canonical === "pi") return mode === "full-access";
-  if (canonical === "kolega") return mode === undefined || mode === "read-only" || mode === "approval-required";
+  if (canonical === "kolega") return mode === undefined || mode === "read-only" || mode === "approval-required" || mode === "full-access";
   return true;
+}
+
+/** Keep an automation on its existing per-request authority checks when its
+ * driver can answer native approvals from the automation policy. */
+export function automationPermissionMode(engine: string, allowSandboxActions: boolean): PermissionMode | null {
+  const mediated = canonicalEngine(engine) === "kolega";
+  if (allowSandboxActions && !mediated && permissionModeSupported(engine, "full-access")) return "full-access";
+  return permissionModeSupported(engine, "approval-required") ? "approval-required" : null;
 }
 
 /** Repository actions require a real sandbox and a permission mode the engine can enforce. */

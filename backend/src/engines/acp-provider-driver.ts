@@ -51,6 +51,7 @@ function prepared(metadata: Record<string, unknown> | undefined): { workdir: str
     typeof runtime.spoolDirectory !== "string" || !runtime.spoolDirectory.startsWith("/") ||
     typeof runtime.model !== "string" || !["openai_responses", "openai_chat", "anthropic"].includes(runtime.style) ||
     (runtime.mode !== "plan" && runtime.mode !== "build") ||
+    (runtime.permission !== "ask" && runtime.permission !== "auto") ||
     (runtime.runAsUser !== null && typeof runtime.runAsUser !== "string")) {
     throw new Error("Kolega Code runtime metadata is incomplete");
   }

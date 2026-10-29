@@ -84,7 +84,10 @@ export class AcpSessionControl {
 
   async configure(configId: string, value: string | boolean): Promise<void> {
     const sessionId = this.requireSession();
-    await this.client.request("session/set_config_option", { sessionId, configId, value });
+    const result = object(await this.client.request("session/set_config_option", { sessionId, configId, value }));
+    const options = result?.configOptions;
+    const selected = Array.isArray(options) ? options.map(object).find((option) => option?.id === configId) : null;
+    if (!selected || selected.currentValue !== value) throw new Error("ACP agent did not confirm the requested session configuration");
   }
 
   async prompt(text: string, timeoutMs: number, onSent?: () => void): Promise<string> {

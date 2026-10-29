@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   approvalDecisionAllowed,
+  automationPermissionMode,
   configuredRuntimeMode,
   isPermissionMode,
   narrowerPermissionMode,
@@ -49,12 +50,22 @@ describe("permission modes", () => {
     }
   });
 
-  test("Kolega requires Plan or explicit approval for native operations", () => {
+  test("Kolega accepts full access only when selected, and retains narrower modes", () => {
     expect(permissionModeSupported("kolega", "read-only")).toBe(true);
     expect(permissionModeSupported("kolega", "approval-required")).toBe(true);
     expect(permissionModeSupported("kolega", "auto-accept-edits")).toBe(false);
-    expect(permissionModeSupported("kolega", "full-access")).toBe(false);
+    expect(permissionModeSupported("kolega", "full-access")).toBe(true);
+    expect(permissionModeSupported("kolega", "auto")).toBe(false);
     expect(permissionModeSupported("pi", "full-access")).toBe(true);
+  });
+
+  test("automations keep mediated authority checks when available", () => {
+    expect(automationPermissionMode("kolega", true)).toBe("approval-required");
+    expect(automationPermissionMode("kolega", false)).toBe("approval-required");
+    expect(automationPermissionMode("codex", true)).toBe("full-access");
+    expect(automationPermissionMode("codex", false)).toBe("approval-required");
+    expect(automationPermissionMode("pi", true)).toBe("full-access");
+    expect(automationPermissionMode("pi", false)).toBeNull();
   });
 
   test("validates the wire enum and keeps the operator posture as the default", () => {
