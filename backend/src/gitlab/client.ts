@@ -1,5 +1,6 @@
 // GitLab.com API boundary. Tokens never appear in URLs, diagnostics or results.
 import { normalizeGitLabRepository, GITLAB_REPOSITORY_PREFIX } from "../resources/gitlab-resolver";
+import { gitlabExcludedGroups } from "../env";
 
 const API = "https://gitlab.com/api/v4";
 const TIMEOUT_MS = 12_000;
@@ -66,6 +67,7 @@ export async function gitLabProject(token: string, repository: string): Promise<
 /** A bounded catalog; inaccessible and malformed projects are never offered. */
 export async function gitLabProjects(token: string, search?: string) {
   const result = [] as { full_name: string; name: string; private: boolean; default_branch: string }[];
+  const excludedGroups = gitlabExcludedGroups();
   const readPage = (page: number) => {
     const query = new URLSearchParams({ membership: "true", simple: "true", per_page: "100", page: String(page) });
     if (search) { query.set("search", search); query.set("search_namespaces", "true"); }
@@ -73,7 +75,7 @@ export async function gitLabProjects(token: string, search?: string) {
   };
   const consume = (rows: GitLabProject[]) => {
     if (!Array.isArray(rows)) throw new Error("GitLab returned an invalid project list");
-    for (const item of rows) if (validProject(item)) result.push({
+    for (const item of rows) if (validProject(item) && !excludedGroups.some((group) => item.path_with_namespace.toLowerCase().startsWith(`${group}/`))) result.push({
       full_name: `${GITLAB_REPOSITORY_PREFIX}${item.path_with_namespace}`,
       name: item.name, private: item.visibility !== "public", default_branch: item.default_branch || "main",
     });

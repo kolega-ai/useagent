@@ -2,7 +2,13 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { gitLabProject, gitLabProjects, gitLabRequest } from "./client";
 
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; mock.restore(); });
+const originalExcludedGroups = process.env.GITLAB_EXCLUDED_GROUPS;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalExcludedGroups === undefined) delete process.env.GITLAB_EXCLUDED_GROUPS;
+  else process.env.GITLAB_EXCLUDED_GROUPS = originalExcludedGroups;
+  mock.restore();
+});
 
 describe("GitLab API boundary", () => {
   test("uses a header for the token, refuses redirects and verifies project identity", async () => {
@@ -31,6 +37,19 @@ describe("GitLab API boundary", () => {
       { id: 0, path_with_namespace: "../bad", name: "bad", visibility: "private" },
     ])) as unknown as typeof fetch;
     expect(await gitLabProjects("fixture-secret")).toEqual([{ full_name: "gitlab.com/a/b/c", name: "c", private: true, default_branch: "main" }]);
+  });
+
+  test("omits excluded groups and their subgroups without hiding similar names", async () => {
+    process.env.GITLAB_EXCLUDED_GROUPS = " gitlab.com/Blocked-Group/ ";
+    globalThis.fetch = mock(async () => Response.json([
+      { id: 1, path_with_namespace: "blocked-group/a", name: "a", visibility: "private" },
+      { id: 2, path_with_namespace: "blocked-group/sub/b", name: "b", visibility: "private" },
+      { id: 3, path_with_namespace: "blocked-group-other/c", name: "c", visibility: "private" },
+      { id: 4, path_with_namespace: "allowed/d", name: "d", visibility: "private" },
+    ])) as unknown as typeof fetch;
+    expect((await gitLabProjects("fixture-secret", "group")).map((project) => project.full_name)).toEqual([
+      "gitlab.com/blocked-group-other/c", "gitlab.com/allowed/d",
+    ]);
   });
 
   test("searches project names and namespaces and reads all advertised pages", async () => {

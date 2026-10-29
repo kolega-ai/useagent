@@ -122,6 +122,10 @@ and repository catalog. An unset value leaves discovery unchanged. This limits
 what UseAgent lists; it does not change the connected token's permissions in
 the sandbox.
 
+To omit GitLab groups and their subgroups from repository discovery, set the
+backend's `GITLAB_EXCLUDED_GROUPS` to a comma-separated list of namespace paths.
+An unset value leaves discovery unchanged; token permissions are unaffected.
+
 The native image recipe installs pinned GitHub and GitLab CLIs. Existing custom
 images should include `git`, `gh`, and `glab`, or allow the sandbox to download
 the pinned CLI releases on its first turn. Tokens are supplied after sandbox
