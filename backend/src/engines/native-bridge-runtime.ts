@@ -81,25 +81,58 @@ export async function runNativeBridgeTurn(
   const durableDeltas = new NativeBridgeDeltaAccumulator();
   let summary = "";
   let authoritativeSummary: string | null = null;
+  let summaryMessageId: string | null = null;
   let terminalObserved = false;
   let childTranscriptDeadline: number | null = null;
   const childTranscriptDrainBudgetMs = options.childTranscriptDrainBudgetMs ??
     CHILD_TRANSCRIPT_DRAIN_BUDGET_MS;
   let eventWrites = Promise.resolve();
+  const startedMessages = new Set<string>();
+  const startedText = new Set<string>();
+  const startedTools = new Set<string>();
   const persistBodies = async (
     bodies: readonly NativeBridgeFrameBody[],
     required = false,
   ): Promise<void> => {
     for (const body of bodies) {
+      const owner = body.ownerChildId ?? session.nativeSessionId;
+      const persist = async (item: NativeBridgeFrameBody, anchor?: "tool" | "text"): Promise<void> => {
+        const event = safePiBridgeProviderEvent(ctx, sequence.frame(item), options.redact, driver.provider);
+        await persistEvent(anchor ? {
+          ...event,
+          id: `${event.id}:${anchor}-start`,
+          eventType: anchor === "tool" ? "part.tool.started" : "part.step-text-start",
+        } : event, {
+          critical: body.kind === "commands.updated" || required || Boolean(body.ownerChildId),
+          required: required || Boolean(body.ownerChildId),
+        });
+      };
+      if (body.kind === "message.started") {
+        const key = `${owner}\0${body.messageId}`;
+        if (startedMessages.has(key)) continue;
+        startedMessages.add(key);
+      } else if (body.kind === "message.delta" || body.kind === "message.authoritative") {
+        const key = `${owner}\0${body.messageId}`;
+        if (!startedMessages.has(key)) {
+          startedMessages.add(key);
+          await persist({ kind: "message.started", messageId: body.messageId, ...(body.ownerChildId ? { ownerChildId: body.ownerChildId } : {}) });
+        }
+        if (!startedText.has(key)) {
+          startedText.add(key);
+          await persist({ kind: "message.started", messageId: body.messageId, ...(body.ownerChildId ? { ownerChildId: body.ownerChildId } : {}) }, "text");
+        }
+      }
+      if (body.kind === "tool.started") {
+        const key = `${owner}\0${body.toolCallId}`;
+        if (!startedTools.has(key)) {
+          startedTools.add(key);
+          // Tool lifecycle rows are upserted on completion. Keep their first
+          // position as a separate immutable event for live and replay ordering.
+          await persist(body, "tool");
+        }
+      }
       for (const durableBody of durableDeltas.durable(body)) {
-        const frame = sequence.frame(durableBody);
-        await persistEvent(
-          safePiBridgeProviderEvent(ctx, frame, options.redact, driver.provider),
-          {
-            critical: body.kind === "commands.updated" || required || Boolean(body.ownerChildId),
-            required: required || Boolean(body.ownerChildId),
-          },
-        );
+        await persist(durableBody);
       }
     }
   };
@@ -112,10 +145,19 @@ export async function runNativeBridgeTurn(
       ctx.reportActivity?.();
     } else if (body.kind === "message.delta") {
       const delta = options.redact.text(body.text);
+      if (summaryMessageId !== body.messageId) {
+        summaryMessageId = body.messageId;
+        summary = "";
+        authoritativeSummary = null;
+      }
       summary += delta;
       ctx.publishDelta?.(delta);
       ctx.reportActivity?.();
     } else if (body.kind === "message.authoritative") {
+      if (summaryMessageId !== body.messageId) {
+        summaryMessageId = body.messageId;
+        summary = "";
+      }
       authoritativeSummary = options.redact.text(body.text);
     } else if (body.kind === "reasoning.delta") {
       ctx.publishDelta?.(options.redact.text(body.text), "reasoning");

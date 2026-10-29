@@ -6,15 +6,13 @@
 // unreadable). This rebuilds the turn opencode-style: narration burst → the tool
 // rows that followed it → next burst → …, from the native store's ordered frames.
 //
-// Ordering is MESSAGE-anchored, never raw-seq: a tool part upserts to its
-// COMPLETION seq (running→completed re-emits a higher seq), so sorting by the
-// frame's current seq would dump every tool after all the text. Instead each
-// opencode step is one message (step-start → text → tools → step-finish); we order
-// messages by their min seq (the stable step-start anchor) and, within a message,
-// put the narration text before its tools in call order (ApiStep.idx).
+// Revisions move a part's sequence, so order by immutable message, text, and
+// tool-start anchors where available. Older bridge frames fall back to their
+// surviving sequence. Message-anchored tools retain their original call order.
 
 import { PLATFORM_EVENT_LANES } from "@useagent/agent-harness/canonical";
 import { nativeOf } from "./native-ids";
+import { bridgeTimelineOrder } from "./timeline-order";
 import type { NativeSnapshot } from "./native-store";
 import {
   type ApiStep,
@@ -565,11 +563,14 @@ export function buildTimeline(native: NativeSnapshot, live: boolean): TimelineNo
   // message order even when its code_json.native omits messageID (subtask parts do).
   const msgOrderKey = new Map<string, number>();
   const partMessage = new Map<string, string>();
+  const { tools: bridgeToolOrder, text: textOrderKey } = bridgeTimelineOrder(nativeFrames, childSessions);
   // Assistant STEP messages emit a step/tool/subtask/reasoning part; a bare text
   // message (injected team-memory context, the echoed user prompt) never does —
   // that is the discriminator that keeps non-narration text out of the timeline.
   const stepMessages = new Set<string>();
   for (const f of nativeFrames) {
+    const payload = asRecord(f.payload);
+    const bridgeFrame = typeof payload?.bridgeSeq === "number";
     const mid = f.native.messageId;
     if (!mid) continue;
     const prev = msgOrderKey.get(mid);
@@ -580,7 +581,8 @@ export function buildTimeline(native: NativeSnapshot, live: boolean): TimelineNo
       t.startsWith("part.step") ||
       t.startsWith("part.tool") ||
       t.startsWith("part.subtask") ||
-      t.startsWith("part.reasoning")
+      t.startsWith("part.reasoning") ||
+      (bridgeFrame && t.startsWith("part.text"))
     )
       stepMessages.add(mid);
   }
@@ -686,7 +688,7 @@ export function buildTimeline(native: NativeSnapshot, live: boolean): TimelineNo
       unpartedText.set(mid, {
         text: `${previous?.text ?? ""}${text}`,
         firstSeq: previous?.firstSeq ?? f.seq,
-        order: previous?.order ?? f.seq,
+        order: previous?.order ?? textOrderKey.get(mid) ?? f.seq,
       });
       continue;
     }
@@ -699,7 +701,7 @@ export function buildTimeline(native: NativeSnapshot, live: boolean): TimelineNo
   }
   for (const [messageId, grouped] of unpartedText) {
     ranked.push({
-      node: { kind: "text", key: `message:${messageId}`, text: grouped.text },
+      node: { kind: "text", key: `message:${messageId}`, text: grouped.text, messageId },
       k0: grouped.order,
       k1: 0,
       k2: grouped.firstSeq,
@@ -773,7 +775,9 @@ export function buildTimeline(native: NativeSnapshot, live: boolean): TimelineNo
     const mid = (ids?.partID && partMessage.get(ids.partID)) || ids?.messageID || null;
     ranked.push({
       node: { kind: "tool", key: step.id, step },
-      k0: mid ? (msgOrderKey.get(mid) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER,
+      k0: mid ? (msgOrderKey.get(mid) ?? Number.MAX_SAFE_INTEGER)
+        : ids?.callID ? (bridgeToolOrder.get(ids.callID) ?? Number.MAX_SAFE_INTEGER)
+        : Number.MAX_SAFE_INTEGER,
       k1: 1,
       k2: step.idx,
     });

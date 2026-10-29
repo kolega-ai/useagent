@@ -27,6 +27,8 @@ import {
   type TimelineNode,
 } from "./timeline";
 import { type ApiStep, deriveTrace, isRenderableTimelineStep } from "./types";
+import type { NativeSnapshot } from "./native-store";
+import { bridgeTimelineOrder } from "./timeline-order";
 
 /** Structural view of a canonical event (envelope base + flattened body fields). */
 export interface CanonicalEventLike {
@@ -39,6 +41,7 @@ export interface CanonicalEventLike {
     readonly nativeSessionId?: string;
     readonly nativeParentSessionId?: string | null;
     readonly nativeSeq?: number;
+    readonly nativeTimelineSeq?: number;
     readonly nativeMessageId?: string;
     readonly nativePartId?: string;
   };
@@ -222,6 +225,7 @@ const MAX = Number.MAX_SAFE_INTEGER;
 export interface ToolLifecycle {
   readonly toolCallId: string;
   readonly firstSeq: number;
+  readonly nativeTimelineSeq?: number;
   readonly lastSeq: number;
   readonly nativeEventIds: readonly string[];
   readonly name: string;
@@ -279,6 +283,7 @@ export function collectToolLifecycles(
     mutable.set(event.toolCallId, {
       toolCallId: event.toolCallId,
       firstSeq: previous?.firstSeq ?? event.seq,
+      nativeTimelineSeq: previous?.nativeTimelineSeq ?? event.identity?.nativeTimelineSeq,
       lastSeq: event.seq,
       nativeEventIds,
       name: event.name ?? previous?.name ?? "tool",
@@ -321,6 +326,7 @@ export function buildTimelineFromCanonical(
   events: readonly CanonicalEventLike[],
   stepsById: ReadonlyMap<string, ApiStep>,
   live = false,
+  native?: NativeSnapshot,
 ): TimelineNode[] {
   const ordered = events.toSorted((a, b) => a.seq - b.seq);
   const toolLifecycles = collectToolLifecycles(ordered);
@@ -339,6 +345,7 @@ export function buildTimelineFromCanonical(
   // Pass 1: derive the same ordering inputs buildTimeline builds from frames.
   const childSessions = new Set<string>();
   const msgOrderKey = new Map<string, number>(); // messageId -> anchor (step-start) seq
+  const textOrderKey = new Map<string, number>();
   const partMessage = new Map<string, string>(); // partId -> messageId
   const stepMessages = new Set<string>(); // messages that began (step-start)
   for (const e of ordered) {
@@ -349,12 +356,23 @@ export function buildTimelineFromCanonical(
     if (mid && pid) partMessage.set(pid, mid);
     if (e.kind === "message.started" && e.messageId) {
       stepMessages.add(e.messageId);
+      if (typeof e.identity?.nativeTimelineSeq === "number" && !e.identity.nativeParentSessionId) textOrderKey.set(e.messageId, e.identity.nativeTimelineSeq);
       if (typeof ns === "number") {
         const prev = msgOrderKey.get(e.messageId);
         if (prev === undefined || ns < prev) msgOrderKey.set(e.messageId, ns);
       }
     }
   }
+
+  // A canonical record written by an older bridge can lack these anchors even
+  // though its native sidecar still identifies the assistant text and calls.
+  const nativeChildren = new Set([...childSessions, ...(native?.childSessionIds ?? [])]);
+  for (const frame of native?.nativeFrames ?? []) {
+    if (frame.native.parentSessionId && frame.native.sessionId) nativeChildren.add(frame.native.sessionId);
+  }
+  const bridgeOrder = bridgeTimelineOrder(native?.nativeFrames ?? [], nativeChildren);
+  for (const mid of bridgeOrder.messages) stepMessages.add(mid);
+  for (const [mid, seq] of bridgeOrder.text) if (!textOrderKey.has(mid)) textOrderKey.set(mid, seq);
 
   const ranked: Ranked[] = [];
   const seenTextPart = new Set<string>();
@@ -475,7 +493,7 @@ export function buildTimelineFromCanonical(
         unpartedText.set(mid, {
           text: `${previous?.text ?? ""}${e.text}`,
           firstSeq: previous?.firstSeq ?? e.identity?.nativeSeq ?? e.seq,
-          order: previous?.order ?? e.identity?.nativeSeq ?? e.seq,
+          order: previous?.order ?? textOrderKey.get(mid) ?? e.identity?.nativeSeq ?? e.seq,
         });
         continue;
       }
@@ -630,7 +648,8 @@ export function buildTimelineFromCanonical(
       const mid = (ids.partID && partMessage.get(ids.partID)) || ids.messageID || null;
       ranked.push({
         node: { kind: "tool", key: step.id, step },
-        k0: boot ? -1 : mid ? (msgOrderKey.get(mid) ?? MAX) : lifecycle.firstSeq,
+        k0: boot ? -1 : mid ? (msgOrderKey.get(mid) ?? MAX)
+          : (lifecycle.nativeTimelineSeq ?? bridgeOrder.tools.get(lifecycle.toolCallId) ?? lifecycle.firstSeq),
         k1: 1,
         k2: step.idx,
       });
@@ -639,7 +658,7 @@ export function buildTimelineFromCanonical(
 
   for (const [messageId, grouped] of unpartedText) {
     ranked.push({
-      node: { kind: "text", key: `message:${messageId}`, text: grouped.text },
+      node: { kind: "text", key: `message:${messageId}`, text: grouped.text, messageId },
       k0: grouped.order,
       k1: 0,
       k2: grouped.firstSeq,

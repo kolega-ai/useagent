@@ -264,12 +264,14 @@ export function translateOpenCode(
   // emitted in the SAME order the legacy timeline places them.
   const msgOrderKey = new Map<string, number>();
   const partMessage = new Map<string, string>();
+  const anchoredMessages = new Set<string>();
   for (const f of orderedFrames) {
     const mid = f.native.messageId;
     if (mid) {
       const prev = msgOrderKey.get(mid);
       if (prev === undefined || f.seq < prev) msgOrderKey.set(mid, f.seq);
       if (f.native.partId) partMessage.set(f.native.partId, mid);
+      if (f.eventType === "part.step-start") anchoredMessages.add(`${f.native.sessionId ?? ""}\0${mid}`);
     }
   }
 
@@ -351,6 +353,9 @@ export function translateOpenCode(
         ? f.native.parentSessionId ?? childParent.get(nativeSessionId)
         : undefined,
       nativeSeq: f.seq,
+      ...(typeof p?.bridgeSeq === "number" && (et.startsWith("part.tool") || et === "part.step-text-start")
+        ? { nativeTimelineSeq: f.seq }
+        : {}),
       nativeMessageId: f.native.messageId ?? undefined,
       nativePartId: f.native.partId ?? undefined,
     };
@@ -770,6 +775,9 @@ export function translateOpenCode(
       }, ident));
     } else if (et.startsWith("session")) {
       produced.push(push(f.eventId, f.provider, { kind: "session.metadata", metadata: p ?? {} }, ident));
+    } else if (et === "part.step-text-start") {
+      if (f.native.messageId) produced.push(push(f.eventId, f.provider, { kind: "message.started", messageId: f.native.messageId }, ident));
+      else suppressed = "text-start without messageId";
     } else if (et === "part.step-start") {
       // The message ANCHOR (lowest seq per message) - emitted losslessly so view
       // reducers can reproduce message-anchored ordering. Skipped only if it carries
@@ -804,7 +812,16 @@ export function translateOpenCode(
       else suppressed = "step-finish without messageId";
     } else if (et.startsWith("part.text")) {
       const mid = f.native.messageId;
-      if (mid) produced.push(push(f.eventId, f.provider, { kind: "message.delta", messageId: mid, text: str(p?.text) ?? "" }, ident));
+      if (mid) {
+        const key = `${f.native.sessionId ?? ""}\0${mid}`;
+        // Older bridge runs recorded text but no message-start event. Preserve
+        // their narration as assistant text when replaying the canonical lane.
+        if (typeof p?.bridgeSeq === "number" && !anchoredMessages.has(key)) {
+          anchoredMessages.add(key);
+          produced.push(push(f.eventId, f.provider, { kind: "message.started", messageId: mid }, ident, "#bridge-start"));
+        }
+        produced.push(push(f.eventId, f.provider, { kind: "message.delta", messageId: mid, text: str(p?.text) ?? "" }, ident));
+      }
       else suppressed = "text part without messageId";
     } else if (et.startsWith("part.reasoning")) {
       const mid = f.native.messageId ?? f.native.partId ?? f.eventId;

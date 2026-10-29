@@ -41,16 +41,64 @@ function snapshot(frames: F[], steps: S[]) {
   return st.getSnapshot();
 }
 
-function bothWays(frames: F[], steps: S[]) {
+function bothWays(frames: F[], steps: S[], live = false) {
   const snap = snapshot(frames, steps);
-  const legacy = buildTimeline(snap, false) ?? [];
+  const legacy = buildTimeline(snap, live) ?? [];
   const stepsById = new Map(snap.steps.map((s) => [s.id, s]));
   const { events } = translateOpenCode(frames, ctx, steps);
-  const canon = buildTimelineFromCanonical(events as unknown as CanonicalEventLike[], stepsById, false);
+  const canon = buildTimelineFromCanonical(events as unknown as CanonicalEventLike[], stepsById, live);
   return { legacy, canon };
 }
 
 describe("canonical<->legacy node equivalence (synthetic text / markers / child)", () => {
+  test.each([true, false])("bridge text and tool starts stay interleaved (live=%s)", (live) => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, provider: "kolega", native: { messageId: "before" }, payload: { bridgeSeq: 0 } }),
+      frame({ eventType: "part.step-text-start", seq: 1, provider: "kolega", native: { messageId: "before" }, payload: { bridgeSeq: 1 } }),
+      frame({ eventType: "part.tool.started", seq: 2, provider: "kolega", native: { callId: "c1" }, payload: { tool: "read", bridgeSeq: 2 } }),
+      // A text segment revision and a tool completion can arrive after the next start.
+      frame({ eventType: "part.text", seq: 3, provider: "kolega", native: { messageId: "before" }, payload: { text: "Reading ", bridgeSeq: 3 } }),
+      frame({ eventType: "part.step-start", seq: 4, provider: "kolega", native: { messageId: "middle" }, payload: { bridgeSeq: 4 } }),
+      frame({ eventType: "part.text", seq: 5, provider: "kolega", native: { messageId: "middle" }, payload: { text: "Checking.", bridgeSeq: 5 } }),
+      frame({ eventType: "part.tool.started", seq: 6, provider: "kolega", native: { callId: "c2" }, payload: { tool: "edit", bridgeSeq: 6 } }),
+      frame({ eventType: "part.text", seq: 7, provider: "kolega", native: { messageId: "before" }, payload: { text: "now.", bridgeSeq: 7 } }),
+      frame({ eventType: "part.tool.completed", seq: 8, provider: "kolega", native: { callId: "c1" }, payload: { tool: "read", bridgeSeq: 8 } }),
+      frame({ eventType: "part.tool.completed", seq: 9, provider: "kolega", native: { callId: "c2" }, payload: { tool: "edit", bridgeSeq: 9 } }),
+      frame({ eventType: "part.step-start", seq: 10, provider: "kolega", native: { messageId: "after" }, payload: { bridgeSeq: 10 } }),
+      frame({ eventType: "part.text", seq: 11, provider: "kolega", native: { messageId: "after" }, payload: { text: "Done.", bridgeSeq: 11 } }),
+      frame({ eventType: "part.text", seq: 12, native: { messageId: "prompt" }, payload: { text: "Echoed prompt" } }),
+    ];
+    const steps = [step("tool1", 0, { callID: "c1" }), step("tool2", 1, { callID: "c2" })];
+    const { legacy, canon } = bothWays(frames, steps, live);
+    expect(legacy.map((node) => node.kind)).toEqual(["text", "tool", "text", "tool", "text"]);
+    expect(legacy.filter((node) => node.kind === "text").map((node) => node.text)).toEqual(["Reading now.", "Checking.", "Done."]);
+    expect(canon).toEqual(legacy);
+  });
+
+  test("older unanchored bridge events remain readable on replay", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.text", seq: 2, provider: "kolega", native: { messageId: "before" }, payload: { text: "Reading.", bridgeSeq: 2 } }),
+      frame({ eventType: "part.tool.completed", seq: 3, provider: "kolega", native: { callId: "c1" }, payload: { tool: "read", bridgeSeq: 3 } }),
+      frame({ eventType: "part.text", seq: 4, provider: "kolega", native: { messageId: "after" }, payload: { text: "Done.", bridgeSeq: 4 } }),
+    ];
+    const { legacy, canon } = bothWays(frames, [step("tool1", 0, { callID: "c1" })]);
+    expect(legacy.map((node) => node.kind)).toEqual(["text", "tool", "text"]);
+    expect(canon).toEqual(legacy);
+
+    // A run may already have been canonicalized before message anchors existed.
+    // Its native sidecar supplies the missing evidence without rewriting history.
+    const snap = snapshot(frames, [step("tool1", 0, { callID: "c1" })]);
+    const oldCanonical = translateOpenCode(frames, ctx, [step("tool1", 0, { callID: "c1" })]).events
+      .filter((event) => event.kind !== "message.started")
+      .map((event) => ({ ...event, identity: { ...event.identity, nativeTimelineSeq: undefined } }));
+    expect(buildTimelineFromCanonical(
+      oldCanonical as unknown as CanonicalEventLike[],
+      new Map(snap.steps.map((item) => [item.id, item])),
+      false,
+      snap,
+    )).toEqual(legacy);
+  });
+
   test("assistant text interleaves with tools across TWO messages", () => {
     const frames: F[] = [
       frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "ps1" } }),
@@ -288,7 +336,7 @@ describe("canonical<->legacy node equivalence (synthetic text / markers / child)
     const { legacy, canon } = bothWays(frames, []);
     expect(legacy).toEqual([
       { kind: "reasoning", key: "reasoning:m1", text: "Let me think" },
-      { kind: "text", key: "message:m1", text: "Final answer" },
+      { kind: "text", key: "message:m1", text: "Final answer", messageId: "m1" },
     ]);
     expect(canon).toEqual(legacy);
   });

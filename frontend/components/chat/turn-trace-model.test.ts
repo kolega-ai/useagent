@@ -3,6 +3,7 @@ import { formatElapsed } from "@/utils/format";
 import type { TimelineNode } from "./timeline";
 import {
   latestPlanEntries,
+  settledTimelineSummary,
   splitTurn,
   type TraceRow,
   traceFailureCount,
@@ -106,6 +107,12 @@ const SETTLED = [
 ];
 
 describe("splitTurn", () => {
+  test("repairs only an exact concatenation of prior messages in an older summary", () => {
+    const nodes: TimelineNode[] = [NARRATION, GIT_LOG, REPLY];
+    expect(settledTimelineSummary(nodes, `${NARRATION.text}${REPLY.text}`)).toBe(REPLY.text);
+    expect(settledTimelineSummary(nodes, "A separately finalized answer")).toBe("A separately finalized answer");
+    expect(settledTimelineSummary([NARRATION, GIT_LOG], NARRATION.text)).toBe(NARRATION.text);
+  });
   test("a settled turn keeps the last burst as the reply and folds everything before it", () => {
     const { work, reply, tail } = splitTurn(SETTLED, false);
     expect(reply).toBe("Here is today's digest.");

@@ -49,6 +49,7 @@ import {
   turnTraceContext,
 } from "@/components/chat/timeline-view";
 import {
+  settledTimelineSummary,
   splitTurn,
   turnNodesFromSteps,
   withTransientLiveReasoning,
@@ -248,8 +249,8 @@ const TurnBlock = memo(function TurnBlock({
   const canonicalDurable = useMemo(() => {
     if (!useCanonical || !turn.canonical) return null;
     const stepsById = new Map(turn.steps.map((s) => [s.id, s]));
-    return buildTimelineFromCanonical(turn.canonical, stepsById, live);
-  }, [useCanonical, turn.canonical, turn.steps, live]);
+    return buildTimelineFromCanonical(turn.canonical, stepsById, live, turn.native);
+  }, [useCanonical, turn.canonical, turn.steps, turn.native, live]);
   const nativeDurable = useMemo(
     () => (useCanonical || !turn.native ? null : buildTimeline(turn.native, live)),
     [useCanonical, turn.native, live],
@@ -285,6 +286,7 @@ const TurnBlock = memo(function TurnBlock({
     liveText.length > 0 || Boolean(summary) || (timeline != null && hasNarration(timeline));
   const timelineOwnsReasoning = timeline?.some((node) => node.kind === "reasoning") ?? false;
   const timelineReply = timeline ? splitTurn(timeline, live).reply : null;
+  const visibleSummary = timeline && !live ? settledTimelineSummary(timeline, summary) : summary;
 
   return (
     <div
@@ -323,7 +325,7 @@ const TurnBlock = memo(function TurnBlock({
             <Timeline
               nodes={timeline}
               live={live}
-              settledReply={status === "completed" && timelineReply ? summary : null}
+              settledReply={status === "completed" && timelineReply ? visibleSummary : null}
               workingSince={deriveRunningStartedAt(turn) ?? undefined}
               showFollowups={isLatestTurn}
               trace={trace}
@@ -402,9 +404,9 @@ const TurnBlock = memo(function TurnBlock({
         />
 
         {/* Hover copy and answer time on the settled answer; the durable summary IS the answer markdown on both render paths. */}
-        {!live && summary && (
+        {!live && visibleSummary && (
           <div className="flex items-center gap-1.5 opacity-0 transition-opacity pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/turn:opacity-100">
-            <MessageCopyButton text={summary} />
+            <MessageCopyButton text={visibleSummary} />
             <AnsweredAt iso={run.updated_at} />
           </div>
         )}

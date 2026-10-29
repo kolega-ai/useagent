@@ -108,6 +108,42 @@ test("a chat turn with no deltas yet shows no narration", () => {
   expect(render(chatTurn(""))).not.toContain("Retry budgets");
 });
 
+test("bridge narration and tools render in order, and historical summaries do not repeat narration", () => {
+  const turn = chatTurn("Reading files.Done.");
+  turn.run.engine = "kolega";
+  const step: ApiStep = {
+    id: "tool", run_id: turn.run.id, idx: 0, kind: "command", label: "Read",
+    chip: null, code_json: JSON.stringify({ tool: "read", input: { file_path: "notes.txt" }, native: { callID: "call" } }),
+    created_at: "2026-01-01T09:00:00.000Z",
+  };
+  const store = createNativeStore();
+  store.ingestAll([step], 0);
+  const add = (seq: number, eventType: string, messageId: string | null, callId: string | null, payload: object) => {
+    store.ingestNative({
+      schemaVersion: 1, eventId: `event-${seq}`, seq, provider: "kolega", eventType,
+      native: { sessionId: "session", parentSessionId: null, messageId, partId: null, callId },
+      payload: { ...payload, bridgeSeq: seq },
+    }, 0);
+  };
+  // This is the shape of existing runs: text and completed tools, without anchors.
+  add(1, "part.text", "first", null, { text: "Reading files." });
+  add(2, "part.tool.completed", null, "call", { tool: "read" });
+  add(3, "part.text", "last", null, { text: "Done." });
+  const current = { ...turn, steps: [step], native: store.getSnapshot() };
+  const live = render(current);
+  const narrationAt = live.indexOf("Reading files.");
+  const toolAt = live.indexOf('data-row-key="tool"');
+  const answerAt = live.indexOf("Done.");
+  expect(narrationAt).toBeGreaterThan(-1);
+  expect(narrationAt).toBeLessThan(toolAt);
+  expect(toolAt).toBeLessThan(answerAt);
+  expect(live).not.toContain("Reading files.Done.");
+
+  const settled = render({ ...current, status: "completed", live: false, summary: "Reading files.Done." });
+  expect(settled).toContain("Done.");
+  expect(settled).not.toContain("Reading files.Done.");
+});
+
 test("native reconnect replay keeps one timeline Thinking owner", () => {
   const run: ApiRun = {
     ...chatTurn("").run,

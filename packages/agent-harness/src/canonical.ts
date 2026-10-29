@@ -67,6 +67,8 @@ export interface CanonicalIdentity {
   nativeEventId?: string;
   /** Native monotonic sequence, when the provider assigns one. */
   nativeSeq?: number;
+  /** Native sequence anchoring text or a tool despite later revisions. */
+  nativeTimelineSeq?: number;
   /** Native message id (opencode `msg_*`) - lets a view reducer anchor per-message
    *  ordering + correlate parts to their message without provider knowledge. */
   nativeMessageId?: string;
