@@ -41,6 +41,7 @@ import { ensureProject } from "../projects/repo";
 import { selectThreadWorkspaceFiles } from "../workspace-files/store";
 import { listUploadsForRuns, type RunUploadDescriptor } from "../uploads/repo";
 import { publicRunCondition } from "./visibility";
+import { AUTOMATION_RUN_ORIGIN } from "./origin";
 import { getCustomerRunForOrg } from "./run-state";
 export { completeRun, getCustomerRunForOrg, pinSkillToActiveRun, setRunStatus } from "./run-state";
 export { getThreadSandboxSnapshot, getThreadSandbox, getThreadSandboxForOrg, setRunSandbox } from "./sandbox-repo";
@@ -478,10 +479,25 @@ export async function listRunSummaries(
     limit?: number;
     includeActive?: boolean;
     includeNativeChildren?: boolean;
+    repository?: string;
   } = {},
 ): Promise<ApiRunSummary[]> {
   const limit = opts.limit ?? 100;
   const rootFilter = opts.all ? sql`` : sql`and root.parent_run_id is null`;
+  // Stored repo references may carry a :branch suffix. Filter before limiting
+  // so a busy organization cannot hide an older project's activity.
+  const repositoryFilter = opts.repository ? sql`and (
+    split_part(root.repo, ':', 1) = ${opts.repository}
+    or exists (
+      select 1 from projects project
+      where project.id = root.project_id and project.org_id = ${orgId}
+        and project.repo_full_name = ${opts.repository}
+    )
+    or exists (
+      select 1 from jsonb_array_elements_text(root.repos) as repo_ref(value)
+      where split_part(repo_ref.value, ':', 1) = ${opts.repository}
+    )
+  )` : sql``;
   const activeFilter = !opts.includeActive
     ? sql`false`
     : opts.all
@@ -495,6 +511,7 @@ export async function listRunSummaries(
     ? sql`created_at desc, id desc`
     : sql`latest_updated_at desc, latest_created_at desc, latest_run_id desc,
         created_at desc, id desc`;
+  const latestAutomationRun = opts.all ? sql`selected_rows.id` : sql`selected_rows.latest_run_id`;
   const rows = await db.execute(sql`
     with latest_thread_runs as (
       select
@@ -516,7 +533,7 @@ export async function listRunSummaries(
         ) as thread_rank
       from runs candidate
       where candidate.org_id = ${orgId}
-        and candidate.origin is null
+        and ${publicRunCondition(sql`candidate.origin`)}
     ), summary_rows as (
       select
         root.id,
@@ -530,6 +547,7 @@ export async function listRunSummaries(
         root.repo,
         root.repos,
         root.connector,
+        root.origin as run_origin,
         root.created_at,
         root.updated_at,
         latest.id as latest_run_id,
@@ -546,8 +564,9 @@ export async function listRunSummaries(
         and latest.thread_id = root.thread_id
         and latest.thread_rank = 1
       where root.org_id = ${orgId}
-        and root.origin is null
+        and ${publicRunCondition(sql`root.origin`)}
         ${rootFilter}
+        ${repositoryFilter}
     ), bounded_rows as (
       select *
       from summary_rows
@@ -565,9 +584,18 @@ export async function listRunSummaries(
     )
     select
       id, prompt, model, engine, status, summary, duration_ms, project_id,
-      repo, repos, connector, created_at, updated_at,
-      latest_run_id, latest_status, latest_cancelled, latest_created_at, latest_updated_at
+      repo, repos, connector, created_at, updated_at, run_origin,
+      latest_run_id, latest_status, latest_cancelled, latest_created_at, latest_updated_at,
+      automation.automation_id, automation.automation_name, automation.automation_trigger
     from selected_rows
+    left join lateral (
+      select s.id::text as automation_id, s.name as automation_name, f.trigger as automation_trigger
+      from schedule_firings f
+      inner join schedules s on s.id = f.schedule_id and s.org_id = ${orgId}
+      where f.run_id = selected_rows.id or f.run_id = ${latestAutomationRun}
+      order by (f.run_id = ${latestAutomationRun}) desc, f.fired_at desc, f.id desc
+      limit 1
+    ) automation on true
     order by ${outputOrder}
   `);
 
@@ -587,6 +615,13 @@ export async function listRunSummaries(
       repos: specs.map((spec) => spec.repo),
       repo_specs: specs,
       connector: (row.connector as RunConnector | null) ?? null,
+      ...(row.run_origin === AUTOMATION_RUN_ORIGIN || row.automation_id ? {
+        automation: {
+          id: (row.automation_id as string | null) ?? null,
+          name: (row.automation_name as string | null) ?? null,
+          trigger: (row.automation_trigger as "cron" | "manual" | null) ?? null,
+        },
+      } : {}),
       created_at: new Date(row.created_at as string | Date).toISOString(),
       updated_at: new Date(row.updated_at as string | Date).toISOString(),
       latest_run_id: row.latest_run_id as string,

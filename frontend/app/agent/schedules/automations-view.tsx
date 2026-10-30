@@ -10,6 +10,7 @@ import {
   type Dispatch,
   type SetStateAction,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -20,6 +21,9 @@ import {
   SegmentedControlItem,
 } from "@/components/base/segmented-control/segmented-control";
 import { useOrgChanges } from "@/hooks/use-org-changes";
+import Link from "next/link";
+import { projectHref } from "@/lib/project-links";
+import { automationMatchesRepository } from "./project-scope";
 import { relativeTime } from "@/utils/format";
 import { AutomationCard } from "./automation-card";
 import { AutomationHistoryDrawer } from "./automation-history-drawer";
@@ -49,7 +53,10 @@ function setBusy(setter: IdSetSetter, id: string, value: boolean) {
   });
 }
 
-export function AutomationsView() {
+export function AutomationsView({ repository = null, createOnLoad = false }: {
+  repository?: string | null;
+  createOnLoad?: boolean;
+}) {
   const [automations, setAutomations] = useState<ScheduleRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -59,6 +66,10 @@ export function AutomationsView() {
   const [historyFor, setHistoryFor] = useState<ScheduleRecord | null>(null);
   const [running, setRunning] = useState<Set<string>>(() => new Set());
   const [mutating, setMutating] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (createOnLoad && repository) { setEditing(null); setEditorOpen(true); }
+  }, [createOnLoad, repository]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -80,9 +91,11 @@ export function AutomationsView() {
     if (change.type === "automation") void load();
   });
 
+  const scoped = useMemo(() => (automations ?? []).filter((automation) =>
+    !repository || automationMatchesRepository(automation, repository)), [automations, repository]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return (automations ?? []).filter((automation) => {
+    return scoped.filter((automation) => {
       const matchesStatus =
         filter === "all" ||
         (filter === "active" && automation.enabled) ||
@@ -94,10 +107,10 @@ export function AutomationsView() {
         automation.engine.toLowerCase().includes(normalized);
       return matchesStatus && matchesQuery;
     });
-  }, [automations, filter, query]);
+  }, [scoped, filter, query]);
 
-  const activeCount = automations?.filter((automation) => automation.enabled).length ?? 0;
-  const latestActivity = automations
+  const activeCount = scoped.filter((automation) => automation.enabled).length;
+  const latestActivity = scoped
     ?.map((automation) => lastRunAt(automation))
     .filter((value): value is string => value !== null)
     .toSorted((left, right) => right.localeCompare(left))[0];
@@ -179,7 +192,8 @@ export function AutomationsView() {
             <h1 className="text-title-2-medium text-text-primary">Automations</h1>
           </div>
           <p className="mt-1.5 text-body-2-regular text-text-secondary">
-            Schedule repeatable work, inspect every execution, and intervene when needed.
+            {repository ? <>Automations for <Link href={projectHref(repository)} className="underline">{repository}</Link>.</> :
+              "Schedule repeatable work, inspect every execution, and intervene when needed."}
           </p>
         </div>
         <Button variant="primary" leadingIcon={RiAddLine} onClick={openCreate}>
@@ -189,7 +203,7 @@ export function AutomationsView() {
 
       <AutomationOverview
         active={activeCount}
-        paused={(automations?.length ?? 0) - activeCount}
+        paused={scoped.length - activeCount}
         latestActivity={latestActivity ? relativeTime(latestActivity) : "No runs yet"}
       />
 
@@ -250,7 +264,7 @@ export function AutomationsView() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyAutomations filtered={automations.length > 0} onCreate={openCreate} />
+          <EmptyAutomations filtered={scoped.length > 0} onCreate={openCreate} />
         ) : (
           <div>
             {filtered.map((automation) => (
@@ -276,6 +290,7 @@ export function AutomationsView() {
       <AutomationEditorModal
         open={editorOpen}
         schedule={editing}
+        initialRepository={repository}
         onClose={() => setEditorOpen(false)}
         onSave={saveAutomation}
       />

@@ -90,6 +90,14 @@ describe("run/step wire boundary decoders", () => {
     expect(decodeApiStep(step)).toEqual(step);
   });
 
+  test("decodes optional automation provenance without accepting malformed data", () => {
+    const automation = { id: "schedule-1", name: "Catalog refresh", trigger: "cron" } as const;
+    expect(decodeApiRunSummary({ ...summary, automation })?.automation).toEqual(automation);
+    expect(decodeApiRunSummary({ ...summary, automation: { id: null, name: null, trigger: null } })?.automation)
+      .toEqual({ id: null, name: null, trigger: null });
+    expect(decodeApiRunSummary({ ...summary, automation: { ...automation, trigger: "unexpected" } })).toBeNull();
+  });
+
   test("decodes a GitLab repository without accepting a mismatched provider", () => {
     const resource = { kind: "code.repository", provider: "gitlab", locator: {
       type: "gitlab.repository", repository: "group/subgroup/repo", revision: null,

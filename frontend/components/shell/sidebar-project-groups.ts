@@ -172,6 +172,13 @@ export function dedupeProjectRepos(repos: readonly ProjectRepo[]): ProjectRepo[]
   });
 }
 
+/** Search the complete catalog, not just the initially visible projects. */
+export function projectMatchesQuery(group: ProjectGroup, query: string): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const searchable = `${group.name} ${group.fullName ?? ""}`.toLowerCase();
+  return terms.every((term) => searchable.includes(term));
+}
+
 export interface VisibleProjectGroups {
   readonly groups: readonly ProjectGroup[];
   readonly hiddenCount: number;

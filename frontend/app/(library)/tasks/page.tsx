@@ -1,5 +1,7 @@
 import { RiListCheck2 } from "@remixicon/react";
+import Link from "next/link";
 import type { Metadata } from "next";
+import { projectHref } from "@/lib/project-links";
 import { fetchRepoProjects, fetchTasks } from "./tasks-api";
 import { TasksBoard } from "./tasks-board";
 import { ALL_PROJECTS, initialProjectFilter, type Task } from "./tasks-data";
@@ -41,6 +43,7 @@ export default async function TasksPage({
           <RiListCheck2 aria-hidden className="mt-0.5 size-5 text-foreground-icon-primary" />
           <div className="flex flex-col gap-0.5">
             <h1 className="text-title-2-medium text-text-primary">Tasks</h1>
+            {forProject ? <Link href={projectHref(forProject)} className="text-body-2-regular text-text-secondary hover:text-text-primary">{forProject}</Link> : null}
             <p className="text-body-2-regular text-text-secondary">
               Durable tasks grouped per project - agents create them mid-run and they outlive the session
             </p>

@@ -10,17 +10,21 @@ export const metadata: Metadata = {
 // Always render fresh — the runs list is live data.
 export const dynamic = "force-dynamic";
 
-export default async function AgentRunsPage() {
+export default async function AgentRunsPage({ searchParams }: {
+  searchParams: Promise<{ repo?: string | string[] }>;
+}) {
+  const repo = (await searchParams).repo;
+  const repository = typeof repo === "string" && repo.length <= 512 ? repo : null;
   let initialRuns: Run[] = [];
   let initialError = false;
 
   try {
-    initialRuns = await fetchRuns();
+    initialRuns = await fetchRuns(undefined, repository);
   } catch {
     initialError = true;
   }
 
   return (
-    <RunsList initialRuns={initialRuns} initialError={initialError} />
+    <RunsList key={repository ?? "all"} initialRuns={initialRuns} initialError={initialError} repository={repository} />
   );
 }

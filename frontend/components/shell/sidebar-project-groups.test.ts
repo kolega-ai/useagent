@@ -4,6 +4,7 @@ import {
   dedupeProjectRepos,
   groupThreadsByProject,
   projectSidebarThreadFamilies,
+  projectMatchesQuery,
   type ProjectRepo,
   runPrimaryRepo,
   UNATTACHED_KEY,
@@ -52,6 +53,16 @@ describe("runPrimaryRepo", () => {
     expect(runPrimaryRepo(run({ id: "c", repo: "acme/legacy" }))).toBe("acme/legacy");
     expect(runPrimaryRepo(run({ id: "d" }))).toBeNull();
   });
+});
+
+test("search finds GitLab repositories beyond the initial catalog window", () => {
+  const repos = [
+    ...Array.from({ length: 112 }, (_, index) => repo(`github/repo-${index}`)),
+    repo("gitlab.com/team/subgroup/service", "Service"),
+  ];
+  const groups = groupThreadsByProject([], repos);
+  expect(groups.filter((item) => projectMatchesQuery(item, "team service")).map((item) => item.fullName))
+    .toEqual(["gitlab.com/team/subgroup/service"]);
 });
 
 describe("groupThreadsByProject", () => {

@@ -56,8 +56,11 @@ const COLUMNS: ColumnDef<DashRun>[] = [
     enableSorting: false,
     header: 'Run',
     cell: ({ row }) => (
-      <span className='block max-w-[320px] truncate text-body-2-medium text-text-primary'>
-        {runTitle(row.original.prompt)}
+      <span className='flex max-w-[320px] items-center gap-2'>
+        <span className='truncate text-body-2-medium text-text-primary'>
+          {row.original.automation?.name || runTitle(row.original.prompt)}
+        </span>
+        {row.original.automation ? <Chip variant='caption' color='soft'>Automation</Chip> : null}
       </span>
     ),
   },

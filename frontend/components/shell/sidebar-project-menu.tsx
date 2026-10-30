@@ -3,6 +3,7 @@
 import {
   type RemixiconComponentType,
   RiAddLine,
+  RiFolderOpenLine,
   RiListCheck2,
   RiMore2Line,
 } from "@remixicon/react";
@@ -17,9 +18,10 @@ import {
 } from "@/components/base/dropdown/dropdown";
 import type { ProjectGroup } from "@/components/session-ui/project-thread-tree";
 import { cx } from "@/utils/cx";
+import { projectHref } from "@/lib/project-links";
 
 export interface ProjectMenuItem {
-  readonly key: "open-tasks" | "new-thread";
+  readonly key: "open-project" | "open-tasks" | "new-thread";
   readonly label: string;
   readonly href: string;
 }
@@ -30,16 +32,13 @@ export function taskBoardHref(projectKey: string): string {
 }
 
 /**
- * Ordered per-project actions - the single source for the kebab + right-click
- * menu, pure so the deep-link routes are unit-testable without rendering. Only
- * real, working routes are listed (no dead rows): "Open task board" (primary)
- * deep-links to the project's Kanban; "New thread in this project" reuses the
- * existing per-repo composer route. "Rename" is intentionally omitted - repos
- * carry no rename affordance.
+ * Ordered per-project actions share the repository identity across the project
+ * view, task board and composer. Rename is omitted because these are repos.
  */
 export function projectMenuItems(group: ProjectGroup): ProjectMenuItem[] {
   if (!group.fullName) return [];
   return [
+    { key: "open-project", label: "Open project", href: projectHref(group.fullName) },
     { key: "open-tasks", label: "Open task board", href: taskBoardHref(group.fullName) },
     {
       key: "new-thread",
@@ -50,6 +49,7 @@ export function projectMenuItems(group: ProjectGroup): ProjectMenuItem[] {
 }
 
 const ITEM_ICON: Record<ProjectMenuItem["key"], RemixiconComponentType> = {
+  "open-project": RiFolderOpenLine,
   "open-tasks": RiListCheck2,
   "new-thread": RiAddLine,
 };

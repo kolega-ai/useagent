@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { projectHref } from '@/lib/project-links';
 import { RiPulseLine, RiSearch2Line, RiWifiOffLine } from '@remixicon/react';
 import type { SortDescriptor } from 'react-aria-components';
 import {
@@ -95,8 +97,9 @@ const COLUMNS: ColumnDef<Run>[] = [
           <StatusDot {...TONE_TO_DOT[runTone(run)]} />
           <div className='min-w-0'>
             <p className='truncate text-body-2-medium text-text-primary'>
-              {runTitle(run.prompt)}
+              {run.automation?.name || runTitle(run.prompt)}
             </p>
+            {run.automation ? <span className='text-caption-1-regular text-text-secondary'>Automation</span> : null}
             {run.summary && (
               <p className='mt-0.5 truncate text-caption-1-regular text-text-secondary'>
                 {run.summary}
@@ -221,9 +224,11 @@ function ErrorState() {
 export function RunsList({
   initialRuns,
   initialError,
+  repository = null,
 }: {
   initialRuns: Run[];
   initialError: boolean;
+  repository?: string | null;
 }) {
   const router = useRouter();
   const [runs, setRuns] = React.useState<Run[]>(initialRuns);
@@ -244,7 +249,7 @@ export function RunsList({
 
   const load = React.useCallback(async (signal?: AbortSignal) => {
       try {
-        const next = await fetchRuns(signal);
+        const next = await fetchRuns(signal, repository);
         setRuns(next);
         setErrored(false);
       } catch {
@@ -253,10 +258,10 @@ export function RunsList({
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
-  }, []);
+  }, [repository]);
 
   useOrgChanges((change) => {
-    if (change.type === 'run') void load();
+    if (change.type === 'run' || change.type === 'automation') void load();
   });
 
   React.useEffect(() => {
@@ -333,7 +338,8 @@ export function RunsList({
       <div className='flex items-center justify-between'>
         <div>
           <p className='text-mono-label text-text-tertiary'>Agent</p>
-          <h1 className='mt-1 text-display-4-medium text-text-primary'>All threads</h1>
+          <h1 className='mt-1 text-display-4-medium text-text-primary'>{repository ? 'Project threads' : 'All threads'}</h1>
+          {repository ? <Link href={projectHref(repository)} className='text-body-2-regular text-text-secondary hover:text-text-primary'>{repository}</Link> : null}
         </div>
         {runs.length > 0 && (
           <div className='flex items-center gap-2 text-caption-1-regular text-text-tertiary'>

@@ -7,6 +7,8 @@ import {
   recentRuns,
 } from "@/components/dashboard/dashboard-data";
 import { DashboardLiveRefresh } from "@/components/dashboard/dashboard-live-refresh";
+import { AutomationActivity } from "@/components/dashboard/automation-activity";
+import type { ScheduleRecord } from "@/app/agent/schedules/schedules-data";
 import {
   StatCard,
   StatCards,
@@ -94,7 +96,13 @@ async function DashboardSummary() {
 }
 
 export default async function DashboardPage() {
-  const runsData = await getJson("/api/runs?view=summary&all=1&limit=1000&include_active=1");
+  const [runsData, automationData] = await Promise.all([
+    getJson("/api/runs?view=summary&all=1&limit=1000&include_active=1"),
+    getJson("/api/automations"),
+  ]);
+  const automationRows = automationData && typeof automationData === "object" &&
+    Array.isArray((automationData as { automations?: unknown }).automations)
+      ? (automationData as { automations: ScheduleRecord[] }).automations : null;
 
   const runs = extractRuns(runsData);
 
@@ -127,6 +135,7 @@ export default async function DashboardPage() {
           <FleetLimits />
         </section>
 
+        <AutomationActivity automations={automationRows} />
         <RecentRunsTable runs={recent} />
 
         {/* Tallest section last so the day-to-day cards stay above the fold. */}

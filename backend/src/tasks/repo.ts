@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { tasks, type TaskStatus } from "../db/schema";
+import { projects, tasks, type TaskStatus } from "../db/schema";
 import { ensureProject, getProjectForOrg } from "../projects/repo";
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,10 @@ export async function listTasksForOrg(
         ? eq(tasks.projectId, selection.projectId)
         : selection.projectKey === null || selection.projectKey === ""
           ? sql`${tasks.projectId} is null`
-          : eq(tasks.projectKey, selection.projectKey);
+          : or(eq(tasks.projectKey, selection.projectKey), sql`${tasks.projectId} in (
+              select ${projects.id} from ${projects}
+              where ${projects.orgId} = ${orgId} and ${projects.repoFullName} = ${selection.projectKey}
+            )`);
   const scope = projectScope
     ? and(eq(tasks.orgId, orgId), projectScope)
     : eq(tasks.orgId, orgId);

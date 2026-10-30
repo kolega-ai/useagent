@@ -93,6 +93,7 @@ export interface ScheduleRecord {
   last_fired_at: string | null;
   /** When it last ran by any trigger, cron or Run now (newest firing in the log). */
   last_run_at: string | null;
+  next_due_at?: string | null;
   recent_firings?: RecentAutomationFiring[];
   created_at: string;
   updated_at: string;
