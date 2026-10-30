@@ -320,7 +320,7 @@ describe("durable admission — restart + crash recovery", () => {
       tier: "standard",
       cpuMillicores: 2_000,
       memoryMib: 8_192,
-      leaseTtlMs: -1,
+      leaseTtlMs: -60_000,
     });
     expect(await claimExpiredLeases(10, [runId])).toEqual([]);
     expect((await reservationSnapshot(orgId)).globalActiveSandboxes).toBe(1);
@@ -877,7 +877,7 @@ describe("durable admission — cancellation + fan-out ceiling", () => {
       tier: "standard",
       cpuMillicores: 2_000,
       memoryMib: 8_192,
-      leaseTtlMs: -1,
+      leaseTtlMs: -60_000,
     });
     await db.execute(sql`update sandbox_leases set sandbox_id = 'box-1' where id = ${leaseId}`);
     const [lease] = await claimExpiredLeases(1);
@@ -902,7 +902,7 @@ describe("durable admission — cancellation + fan-out ceiling", () => {
       tier: "standard",
       cpuMillicores: 2_000,
       memoryMib: 8_192,
-      leaseTtlMs: -1,
+      leaseTtlMs: -60_000,
       sandboxId: "box-success",
     });
     await db.execute(sql`update runs set sandbox_id = 'box-success', status = 'running' where id = ${runId}`);
@@ -925,7 +925,7 @@ describe("durable admission — cancellation + fan-out ceiling", () => {
       tier: "standard",
       cpuMillicores: 2_000,
       memoryMib: 8_192,
-      leaseTtlMs: -1,
+      leaseTtlMs: -60_000,
       sandboxId: "box-finalizer-race",
     });
     await db.execute(sql`update runs set sandbox_id = 'box-finalizer-race', status = 'running' where id = ${runId}`);
