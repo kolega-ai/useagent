@@ -29,8 +29,10 @@ function decodeRunsEnvelope(value: unknown): Run[] {
   return rows.map(decodeApiRunSummary).filter((run): run is Run => run !== null);
 }
 
-export async function fetchRuns(signal?: AbortSignal): Promise<Run[]> {
-  const res = await backendFetch('/api/runs?view=summary&limit=100&include_active=1', {
+export async function fetchRuns(signal?: AbortSignal, repository?: string | null): Promise<Run[]> {
+  const scope = repository ? `&repo=${encodeURIComponent(repository)}` : '';
+  const limit = repository ? 1000 : 100;
+  const res = await backendFetch(`/api/runs?view=summary&limit=${limit}&include_active=1${scope}`, {
     cache: 'no-store',
     signal,
   });

@@ -4,6 +4,7 @@ import { orgScope } from "../middleware/org";
 import { requestFromOperator } from "../operator/access";
 import { listSecretMeta } from "../secrets/store";
 import { parseRepositoryFiles } from "../workspace-files/validation";
+import { listProjectRequests, ProjectRepositoryUnavailable } from "../repositories/project-requests";
 import {
   ensureProject,
   getProjectForOrg,
@@ -43,6 +44,16 @@ projectsRoutes.get("/", async (c) => {
     limit,
   });
   return c.json({ projects: rows.map(toProject) });
+});
+
+projectsRoutes.get("/repository-requests", async (c) => {
+  const repository = c.req.query("repo")?.trim() ?? "";
+  if (!repository || repository.length > 512) return c.json({ error: "invalid repository" }, 400);
+  try { return c.json(await listProjectRequests(c.get("orgId"), repository)); }
+  catch (error) {
+    if (error instanceof ProjectRepositoryUnavailable) return c.json({ error: "repository not available" }, 404);
+    return c.json({ error: "Could not load pull or merge requests. Check the repository connection and retry." }, 503);
+  }
 });
 
 projectsRoutes.post("/", async (c) => {

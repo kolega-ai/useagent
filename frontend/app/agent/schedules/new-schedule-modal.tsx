@@ -41,11 +41,13 @@ function looksLikeCron(value: string): boolean {
 export function AutomationEditorModal({
   open,
   schedule,
+  initialRepository = null,
   onClose,
   onSave,
 }: {
   open: boolean;
   schedule: ScheduleRecord | null;
+  initialRepository?: string | null;
   onClose: () => void;
   onSave: (input: CreateScheduleInput) => Promise<void>;
 }) {
@@ -78,14 +80,14 @@ export function AutomationEditorModal({
     setTimezone(schedule ? (schedule.timezone ?? "") : localZone());
     setEngine(schedule?.engine ?? "");
     setModel(schedule?.model ?? "");
-    setCodeMode(schedule?.code_policy?.mode ?? "none");
-    setCodeRepo(schedule?.code_policy?.repository ?? "");
+    setCodeMode(schedule?.code_policy?.mode ?? (initialRepository && !schedule ? "agent" : "none"));
+    setCodeRepo(schedule?.code_policy?.repository ?? (schedule ? "" : initialRepository ?? ""));
     setCodeDraft(schedule?.code_policy?.draft ?? true);
     setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? true);
     setSelectedFiles(schedule?.workspace_file_selection ?? []);
     setBusy(false);
     setError(null);
-  }, [open, schedule]);
+  }, [open, schedule, initialRepository]);
 
   useEffect(() => {
     if (!open) return;

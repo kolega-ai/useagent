@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import * as backend from "@/lib/backend-fetch";
-import { fetchSidebarRuns } from "./runs-data";
+import { fetchRuns, fetchSidebarRuns } from "./runs-data";
 
 function summary(id: string, status = "running") {
   return {
@@ -36,6 +36,15 @@ async function waitForCalls(spy: { mock: { calls: unknown[] } }, count: number):
 
 afterEach(() => {
   (backend.backendFetch as { mockRestore?: () => void }).mockRestore?.();
+});
+
+test("the project thread list requests its full repository identity", async () => {
+  const request = spyOn(backend, "backendFetch").mockResolvedValue(new Response(JSON.stringify({ runs: [summary("run-1")] })));
+  await fetchRuns(undefined, "gitlab.com/team/sub/repo");
+  expect(request).toHaveBeenCalledWith(
+    "/api/runs?view=summary&limit=1000&include_active=1&repo=gitlab.com%2Fteam%2Fsub%2Frepo",
+    { cache: "no-store", signal: undefined },
+  );
 });
 
 describe("fetchSidebarRuns", () => {

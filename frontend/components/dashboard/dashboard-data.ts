@@ -23,6 +23,7 @@ export interface DashRun {
   status: RunStatus;
   duration_ms: number | null;
   created_at: string | number;
+  automation?: { id: string | null; name: string | null; trigger: 'cron' | 'manual' | null };
 }
 
 export function extractRuns(data: unknown): DashRun[] {
@@ -37,6 +38,8 @@ function toDashRun(value: unknown): DashRun | null {
   if (typeof r.id !== 'string') return null;
   const status = toRunStatus(r.status);
   if (!status) return null;
+  const automation = r.automation && typeof r.automation === 'object'
+    ? r.automation as DashRun['automation'] : undefined;
   return {
     id: r.id,
     prompt: typeof r.prompt === 'string' ? r.prompt : '',
@@ -46,6 +49,7 @@ function toDashRun(value: unknown): DashRun | null {
     status,
     duration_ms: typeof r.duration_ms === 'number' ? r.duration_ms : null,
     created_at: (r.created_at as string | number) ?? 0,
+    ...(automation ? { automation } : {}),
   };
 }
 

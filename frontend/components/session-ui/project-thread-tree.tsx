@@ -371,6 +371,7 @@ function ProjectFolder({
   expanded,
   onToggle,
   threadHref,
+  projectHref,
   renderMenu,
   onPinThread,
 }: {
@@ -378,6 +379,7 @@ function ProjectFolder({
   expanded: boolean;
   onToggle: (key: string) => void;
   threadHref: (thread: ProjectThread) => string;
+  projectHref?: (group: ProjectGroup) => string | null;
   renderMenu?: (group: ProjectGroup, control: ProjectMenuControl) => ReactNode;
   onPinThread?: (id: string) => void;
 }) {
@@ -385,6 +387,7 @@ function ProjectFolder({
   const [showAllThreads, setShowAllThreads] = useState(false);
   const Icon = expanded ? RiFolderOpenLine : RiFolderLine;
   const menu = renderMenu?.(group, { isOpen: menuOpen, setOpen: setMenuOpen });
+  const projectUrl = projectHref?.(group) ?? null;
   const visibleThreads = showAllThreads
     ? group.threads
     : group.threads.slice(0, VISIBLE_THREADS_PER_PROJECT);
@@ -406,6 +409,10 @@ function ProjectFolder({
             {group.label}
           </span>
         </button>
+        {projectUrl ? <Link href={projectUrl} aria-label={`Open project ${group.label}`}
+          title="Open project" className="shrink-0 rounded-lg px-1.5 py-1 text-caption-1-medium text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+          Open
+        </Link> : null}
         {menu}
       </div>
       <div
@@ -454,6 +461,7 @@ export function ProjectThreadTree({
   isExpanded,
   onToggle,
   threadHref,
+  projectHref,
   renderMenu,
   onPinThread,
 }: {
@@ -461,6 +469,7 @@ export function ProjectThreadTree({
   isExpanded: (key: string) => boolean;
   onToggle: (key: string) => void;
   threadHref: (thread: ProjectThread) => string;
+  projectHref?: (group: ProjectGroup) => string | null;
   renderMenu?: (group: ProjectGroup, control: ProjectMenuControl) => ReactNode;
   /** Pins a thread to the rail's Bookmarks; rows get a pin button when given. */
   onPinThread?: (id: string) => void;
@@ -474,6 +483,7 @@ export function ProjectThreadTree({
           expanded={isExpanded(group.key)}
           onToggle={onToggle}
           threadHref={threadHref}
+          projectHref={projectHref}
           renderMenu={renderMenu}
           onPinThread={onPinThread}
         />

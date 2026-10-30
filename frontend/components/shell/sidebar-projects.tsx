@@ -1,10 +1,12 @@
 "use client";
 
-import { RiArrowDownSLine } from "@remixicon/react";
-import { usePathname } from "next/navigation";
+import { RiArrowDownSLine, RiSearch2Line } from "@remixicon/react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { sidebarNativeAgentRows } from "@/components/session-ui/native-agent-rows";
+import { Input } from "@/components/base/input/input";
+import { projectHref } from "@/lib/project-links";
 import { chatTitle } from "@/components/shell/chat-title";
 import { bookmarks } from "@/components/shell/sidebar-bookmarks-store";
 import {
@@ -33,6 +35,7 @@ import {
   dedupeProjectRepos,
   groupThreadsByProject,
   projectSidebarThreadFamilies,
+  projectMatchesQuery,
   type ProjectGroup,
   type ProjectRepo,
   runPrimaryRepo,
@@ -45,8 +48,6 @@ import { useSidebarThreadRelationships } from "./sidebar-threads-provider";
 import { effectiveThreadStatus } from "./thread-discovery";
 
 const PROJECT_POLL_MS = 30_000;
-const MAX_PROJECTS = 48;
-
 const VISIBLE_PROJECTS = 5;
 // Recent threads stay visible; the rest sit behind a "Show N more" disclosure so
 // a long history never floods the rail (same cap as the previous rail).
@@ -98,6 +99,7 @@ function writeExpanded(userId: string | null, value: Record<string, boolean>): v
  */
 export function SidebarProjects() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { session, loading: sessionLoading } = useSession();
   const [projects, setProjects] = useState<ProjectRepo[]>([]);
   const runs = useSidebarThreads();
@@ -105,6 +107,8 @@ export function SidebarProjects() {
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [showEmptyProjects, setShowEmptyProjects] = useState(false);
   const [showAllThreads, setShowAllThreads] = useState(false);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [browseProjects, setBrowseProjects] = useState(false);
   const [loadedFolded, setLoadedFolded] = useState<{
     userId: string | null;
     value: FoldedSections;
@@ -154,9 +158,8 @@ export function SidebarProjects() {
         if (repo.full_name.length === 0) return [];
         return [{ fullName: repo.full_name, name: repo.name && repo.name.length > 0 ? repo.name : repo.full_name }];
       });
-      // Dedupe BEFORE capping: upstream duplicates collapsed in the DOM (React
-      // keys) while still counting toward "Show N more" (release-audit bug).
-      setProjects(dedupeProjectRepos(repos).slice(0, MAX_PROJECTS));
+      // The disclosure and search must see every distinct accessible repo.
+      setProjects(dedupeProjectRepos(repos));
     } catch {
       // Ambient navigation stays quiet on authentication or fetch failures.
     }
@@ -185,11 +188,24 @@ export function SidebarProjects() {
     [families.roots, projects],
   );
 
+  const focusedProject = useMemo(() => {
+    if (["/projects", "/agent/new", "/agent/runs", "/agent/automations"].includes(pathname)) {
+      const repo = searchParams.get("repo");
+      if (repo) return repo;
+    }
+    const activeId = pathname.startsWith("/session/") ? pathname.slice("/session/".length) : null;
+    const relationship = activeId ? relationships.find((item) => item.threadId === activeId) : null;
+    const activeRun = runs.find((run) => run.id === (relationship?.familyThreadId ?? activeId));
+    return activeRun ? runPrimaryRepo(activeRun) : null;
+  }, [pathname, searchParams, relationships, runs]);
+  useEffect(() => { setBrowseProjects(false); }, [focusedProject]);
+
   // Default-open the active thread's project plus the most recent one; explicit
   // user toggles (stored) win over the default.
   const defaultExpanded = useMemo(() => {
     const set = new Set<string>();
     if (groups[0]) set.add(groups[0].key);
+    if (focusedProject) set.add(focusedProject);
     const activeId = pathname.startsWith("/session/") ? pathname.slice("/session/".length) : null;
     const activeRelationship = activeId
       ? relationships.find((relationship) => relationship.threadId === activeId)
@@ -199,7 +215,7 @@ export function SidebarProjects() {
     );
     if (activeRun) set.add(runPrimaryRepo(activeRun) ?? UNATTACHED_KEY);
     return set;
-  }, [groups, runs, relationships, pathname]);
+  }, [groups, runs, relationships, pathname, focusedProject]);
 
   const isExpanded = (key: string) =>
     key in overrides ? overrides[key] : defaultExpanded.has(key);
@@ -236,7 +252,7 @@ export function SidebarProjects() {
         threads: group.threads.map((run): ProjectThread => {
           return {
             id: run.id,
-            label: chatTitle(run.prompt),
+            label: run.automation?.name || chatTitle(run.prompt),
             time: relativeTimeShort(threadRowTimestamp(run)),
             status: effectiveThreadStatus(run),
             engine: run.engine,
@@ -256,12 +272,14 @@ export function SidebarProjects() {
   // behind "Show N more" (they were flooding the rail); loose threads with no
   // project get their own bottom section with its own "Show N more".
   const activeProjects = useMemo(
-    () => groups.filter((group) => group.fullName !== null && group.threads.length > 0),
-    [groups],
+    () => groups.filter((group) => group.fullName !== null && group.threads.length > 0 && projectMatchesQuery(group, projectQuery) &&
+      (!focusedProject || browseProjects || Boolean(projectQuery.trim()) || group.fullName === focusedProject)),
+    [groups, projectQuery, focusedProject, browseProjects],
   );
   const emptyProjects = useMemo(
-    () => groups.filter((group) => group.fullName !== null && group.threads.length === 0),
-    [groups],
+    () => groups.filter((group) => group.fullName !== null && group.threads.length === 0 && projectMatchesQuery(group, projectQuery) &&
+      (!focusedProject || browseProjects || Boolean(projectQuery.trim()) || group.fullName === focusedProject)),
+    [groups, projectQuery, focusedProject, browseProjects],
   );
   const independentThreads = useMemo(
     () => groups.find((group) => group.key === UNATTACHED_KEY)?.threads ?? [],
@@ -293,7 +311,7 @@ export function SidebarProjects() {
 
   return (
     <>
-      {displayedProjects.length > 0 && (
+      {groups.some((group) => group.fullName !== null) && (
         <>
           <SidebarSectionToggle
             open={folded !== null && !folded.projects}
@@ -304,11 +322,21 @@ export function SidebarProjects() {
           </SidebarSectionToggle>
           {folded !== null && !folded.projects && (
             <div id="sidebar-projects-section">
+              <div className="px-2 py-1">
+                <Input aria-label="Search projects" placeholder="Search projects" size="small" leadingIcon={RiSearch2Line}
+                  value={projectQuery} onChange={(value) => { setProjectQuery(value); setShowEmptyProjects(false); }} />
+              </div>
+              {focusedProject && !projectQuery.trim() ? <button type="button" onClick={() => setBrowseProjects((value) => !value)}
+                className="px-3 py-1 text-caption-1-medium text-text-secondary hover:text-text-primary">
+                {browseProjects ? "Focus on this project" : "Browse all projects"}
+              </button> : null}
+              {displayedProjects.length === 0 && projectQuery ? <p className="px-3 py-1 text-caption-1-regular text-text-tertiary">No matching projects.</p> : null}
               <ProjectThreadTree
                 groups={toTree(displayedProjects)}
                 isExpanded={isExpanded}
                 onToggle={toggle}
                 threadHref={(thread) => `/session/${thread.id}`}
+                projectHref={(group) => group.fullName ? projectHref(group.fullName) : null}
                 renderMenu={renderMenu}
                 onPinThread={(id) => bookmarks.add(userId, id)}
               />

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractDashboardSummary, recentRuns, type DashRun } from "./dashboard-data";
+import { extractDashboardSummary, extractRuns, recentRuns, type DashRun } from "./dashboard-data";
 
 function run(id: string, createdAt: string): DashRun {
   return {
@@ -50,5 +50,11 @@ describe("recent dashboard runs", () => {
       stats: { total: 1_005 },
       settlementHistoryFrom: "2026-08-24T01:02:03.000Z",
     });
+  });
+
+  test("preserves automation provenance in the dashboard run list", () => {
+    const automation = { id: "schedule", name: "Catalog refresh", trigger: "cron" };
+    const runs = extractRuns({ runs: [{ ...run("auto", "2026-10-30T00:00:00Z"), automation }] });
+    expect(runs[0]?.automation).toEqual(automation);
   });
 });

@@ -1,11 +1,10 @@
-import { isNull } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 
 import { runs } from "../db/schema";
+import { AUTOMATION_RUN_ORIGIN } from "./origin";
 
-/** Product-facing run lists expose only user-created traffic. Internal origins
- * are server-owned and intentionally open-ended, so an old or newly added
- * probe origin must never become visible merely because a static allowlist
- * forgot its name. */
-export function publicRunCondition() {
-  return isNull(runs.origin);
+/** Product-created automation runs are visible; unknown and internal origins
+ * stay private. Accept an alias for the compact summary's raw SQL query. */
+export function publicRunCondition(origin: SQLWrapper = runs.origin) {
+  return sql`(${origin} is null or ${origin} = ${AUTOMATION_RUN_ORIGIN})`;
 }

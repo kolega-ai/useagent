@@ -366,6 +366,12 @@ export interface ApiNativeChildSummary {
  *  Root fields preserve thread identity and compatibility. `latest_*` projects
  *  the newest turn so callers can render and rank the thread's current state. */
 export type ApiRunSummary = ApiRunSummaryBase & {
+  /** Present for an automation firing, including legacy firings without an origin. */
+  automation?: {
+    id: string | null;
+    name: string | null;
+    trigger: "cron" | "manual" | null;
+  };
   latest_run_id: string;
   latest_status: RunStatus;
   /** Durable run.cancel intent for latest_run_id. */
@@ -661,6 +667,18 @@ export function decodeApiRunSummary(value: unknown): ApiRunSummary | null {
   if (!record || !summary) return null;
   const nativeChildren = decodeNativeChildrenProjection(record);
   if (nativeChildren === null) return null;
+  const automation = record.automation === undefined ? undefined : asRecord(record.automation);
+  if (record.automation !== undefined && (
+    !automation || !isNullableString(automation.id) || !isNullableString(automation.name) ||
+    !(automation.trigger === null || automation.trigger === "cron" || automation.trigger === "manual")
+  )) return null;
+  const automationProjection = automation ? {
+    automation: {
+      id: automation.id as string | null,
+      name: automation.name as string | null,
+      trigger: automation.trigger as "cron" | "manual" | null,
+    },
+  } : {};
 
   const hasLatestProjection =
     record.latest_run_id !== undefined ||
@@ -672,6 +690,7 @@ export function decodeApiRunSummary(value: unknown): ApiRunSummary | null {
     return {
       ...summary,
       ...nativeChildren,
+      ...automationProjection,
       latest_run_id: summary.id,
       latest_status: summary.status,
       latest_created_at: summary.created_at,
@@ -692,6 +711,7 @@ export function decodeApiRunSummary(value: unknown): ApiRunSummary | null {
   return {
     ...summary,
     ...nativeChildren,
+    ...automationProjection,
     latest_run_id: record.latest_run_id,
     latest_status: record.latest_status as RunStatus,
     ...(typeof record.latest_cancelled === "boolean"

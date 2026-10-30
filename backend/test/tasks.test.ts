@@ -2,6 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { createOrgSession, json, uid } from "./helpers";
 
 describe("tasks CRUD (org-scoped) + project filter", () => {
+  test("repository filtering follows the durable project identity even when its key differs", async () => {
+    const a = await createOrgSession("tasks-repo-a");
+    const b = await createOrgSession("tasks-repo-b");
+    const project = await json<{ id: string }>("/api/projects", { method: "POST", cookies: a.cookies,
+      body: { key: `custom-${uid()}`, repo_full_name: "gitlab.com/team/repo" } });
+    const task = await json<{ id: string }>("/api/tasks", { method: "POST", cookies: a.cookies,
+      body: { title: "Project task", project_id: project.body.id } });
+    const path = `/api/tasks?project=${encodeURIComponent("gitlab.com/team/repo")}`;
+    expect((await json<{ tasks: { id: string }[] }>(path, { cookies: a.cookies })).body.tasks.map((row) => row.id)).toEqual([task.body.id]);
+    expect((await json<{ tasks: { id: string }[] }>(path, { cookies: b.cookies })).body.tasks).toEqual([]);
+  });
   test("create -> org-scoped list -> project filter -> status update -> delete -> 404", async () => {
     const a = await createOrgSession("tasks-a");
     const b = await createOrgSession("tasks-b");

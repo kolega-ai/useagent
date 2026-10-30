@@ -28,7 +28,7 @@ export function DashboardLiveRefresh() {
   );
 
   useOrgChanges((change) => {
-    if (change.type !== 'run') return;
+    if (change.type !== 'run' && change.type !== 'automation') return;
     if (pendingRef.current) return;
     const wait = Math.max(0, REFRESH_SPACING_MS - (Date.now() - lastRefreshRef.current));
     pendingRef.current = setTimeout(() => {

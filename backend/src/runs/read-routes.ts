@@ -24,6 +24,11 @@ export function registerRunReadRoutes(routes: Hono<AppEnv>): void {
   routes.get("/", async (c) => {
     const all = c.req.query("all") === "1";
     const requestedLimit = Number.parseInt(c.req.query("limit") ?? "100", 10);
+    const repository = c.req.query("repo")?.trim();
+    if (repository && (repository.length > 512 || /[\x00-\x1f\x7f]/u.test(repository))) {
+      return c.json({ error: "invalid repository" }, 400);
+    }
+    if (repository && c.req.query("view") !== "summary") return c.json({ error: "repository filtering requires summary view" }, 400);
     const limit = Number.isFinite(requestedLimit)
       ? Math.min(c.req.query("view") === "summary" ? 1_000 : 100, Math.max(1, requestedLimit))
       : 100;
@@ -34,6 +39,7 @@ export function registerRunReadRoutes(routes: Hono<AppEnv>): void {
           limit,
           includeActive: c.req.query("include_active") === "1",
           includeNativeChildren: c.req.query("include_native_children") === "1",
+          repository: repository || undefined,
         }),
       });
     }

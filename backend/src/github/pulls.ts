@@ -73,18 +73,19 @@ function ghHeaders(token: string | null): Record<string, string> {
 
 /** Open PRs for one repo (newest activity first, bounded). A per-repo failure
  *  yields [] so one bad repo can't sink the whole page. */
-async function fetchRepoPulls(
+export async function fetchRepoPulls(
   repo: string,
   token: string | null,
   signal: AbortSignal,
+  perPage = PER_PAGE,
 ): Promise<PullInfo[]> {
   const res = await fetch(
-    `${GITHUB_API}/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=${PER_PAGE}`,
+    `${GITHUB_API}/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=${perPage}`,
     { headers: ghHeaders(token), signal },
   );
   if (!res.ok) throw new Error(`GitHub API ${res.status}`);
   const batch = (await res.json()) as GhPull[];
-  if (!Array.isArray(batch)) return [];
+  if (!Array.isArray(batch)) throw new Error("GitHub returned an invalid pull request list");
   return batch.map((p) => ({
     id: `${repo}#${p.number}`,
     repo,

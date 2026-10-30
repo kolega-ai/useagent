@@ -14,6 +14,7 @@ import {
   RiRobot2Line,
 } from "@remixicon/react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { chatTitle } from "@/components/shell/chat-title";
 import { useRailFolded } from "@/components/shell/rail-folded";
@@ -166,7 +167,7 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
         <>
           <SidebarBookmarks />
           <SidebarAutomations />
-          <SidebarProjects />
+          <Suspense fallback={null}><SidebarProjects /></Suspense>
         </>
       )}
     </AppSidebarFrame>
