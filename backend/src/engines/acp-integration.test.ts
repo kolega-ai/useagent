@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { validateProviderDriver } from "@useagent/agent-harness/control";
 import { resolveProviderRegistration } from "./index";
-import { acpLaunchCommand, configureAcpSession } from "./acp-sandbox-bridge";
+import { acpLaunchCommand, acpPromptFailure, configureAcpSession } from "./acp-sandbox-bridge";
+import { AcpRemoteError } from "./acp-client";
 import { allowedModelsForEngine, defaultModelForEngine } from "../runs/model-policy";
 import { providerForEngine } from "../provider-gateway/provider";
 import { engineModelReadyForDispatch } from "../runs/engine-readiness";
@@ -42,5 +43,14 @@ describe("native ACP integration", () => {
     await configureAcpSession(control, { permission: "auto", mode: "build" });
     await configureAcpSession(control, { permission: "ask", mode: "plan" });
     expect(configured).toEqual([["mode", "build"], ["permission-auto", "auto"], ["mode", "plan"], ["permission-auto", "ask"]]);
+  });
+
+  test("distinguishes sandbox and protocol failures without exposing agent output", () => {
+    expect(acpPromptFailure(new Error("ACP sandbox transport disconnected"))).toContain("lost its connection to the sandbox");
+    expect(acpPromptFailure(new Error("ACP sandbox process exited"))).toContain("stopped inside the sandbox");
+    expect(acpPromptFailure(new Error("ACP protocol frame is invalid"))).toContain("invalid protocol response");
+    expect(acpPromptFailure(new AcpRemoteError(-32603))).toContain("code -32603");
+    const secret = "private-native-error-content";
+    expect(acpPromptFailure(new Error(secret))).not.toContain(secret);
   });
 });

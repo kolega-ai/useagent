@@ -4,6 +4,7 @@ import type { SandboxHandle } from "../sandboxes/provider";
 import type { ExpectedSandboxBinding } from "../sandboxes/expected-binding";
 import { AGENT_SOURCE_CONTROL_ENV } from "../repositories/agent-credentials";
 import { AcpSessionControl, type AcpPermission } from "./acp-session";
+import { AcpRemoteError } from "./acp-client";
 import {
   acpProcessSessionPrefix,
   cleanupOwnedAcpTransports,
@@ -57,6 +58,30 @@ export async function configureAcpSession(
   await control.configure("permission-auto", runtime.permission);
 }
 
+/** Give useful, bounded diagnostics without exposing native process output. */
+export function acpPromptFailure(error: unknown): string {
+  if (error instanceof AcpRemoteError) {
+    const code = error.code === null ? "" : ` (code ${error.code})`;
+    return `Kolega Code returned an agent protocol error${code}. Check the agent session and retry.`;
+  }
+  const reason = error instanceof Error ? error.message : "";
+  switch (reason) {
+    case "ACP sandbox process exited":
+      return "Kolega Code stopped inside the sandbox before completing. Check the sandbox and retry.";
+    case "ACP sandbox transport disconnected":
+    case "ACP transport disconnected":
+      return "Kolega Code lost its connection to the sandbox. Check the sandbox and retry.";
+    case "ACP transport write failed":
+      return "UseAgent could not send a request to Kolega Code in the sandbox. Check the sandbox and retry.";
+    case "ACP protocol frame is invalid":
+    case "ACP response has no result":
+    case "ACP prompt ended without a stop reason":
+      return "Kolega Code returned an invalid protocol response. Check the agent version and retry.";
+    default:
+      return "Kolega Code could not complete its session. Check the agent and sandbox, then retry.";
+  }
+}
+
 export class SandboxAcpSession {
   readonly sessionFile: string;
   readonly sandboxId: string;
@@ -108,7 +133,9 @@ export class SandboxAcpSession {
     );
     try {
       await transport.start();
-      void transport.waitForTermination().then(() => control.close("ACP sandbox process exited"));
+      void transport.waitForTermination().then((result) => control.close(
+        result.error ? "ACP sandbox transport disconnected" : "ACP sandbox process exited",
+      ));
       const sessionId = await control.open(input.workdir, input.resumeId);
       await configureAcpSession(control, input.runtime);
       instance = new SandboxAcpSession(control, transport, sessionId, input.sandbox.id, input.expectedSandbox);
@@ -135,11 +162,11 @@ export class SandboxAcpSession {
     this.active = true;
     this.emit({ kind: "turn.started" });
     const delivered = Promise.withResolvers<void>();
-    void this.control.prompt(text, 30 * 60_000, delivered.resolve).then(
+    void this.control.prompt(text, null, delivered.resolve).then(
       (reason) => this.emit(reason === "end_turn" ? { kind: "turn.completed" } : { kind: "turn.failed", error: `Kolega Code stopped: ${reason}` }),
       (error) => {
         delivered.reject(error);
-        this.emit({ kind: "turn.failed", error: "Kolega Code session or transport failed. Check sandbox access to the provider gateway and the model provider configuration, then retry." });
+        this.emit({ kind: "turn.failed", error: acpPromptFailure(error) });
       },
     ).finally(() => { this.active = false; });
     await delivered.promise;

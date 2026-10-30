@@ -78,3 +78,31 @@ test("session configuration must confirm the requested permission mode", async (
   await client.configure("permission-auto", "ask");
   client.close();
 });
+
+test("the prompt remains open through updates and can be cancelled", async () => {
+  const sent: Array<Record<string, unknown>> = [];
+  const updates: unknown[] = [];
+  let client: AcpSessionControl;
+  client = new AcpSessionControl(async (line) => {
+    const message = JSON.parse(line) as Record<string, unknown>;
+    sent.push(message);
+    if (message.method === "initialize" || message.method === "session/new") {
+      const result = message.method === "initialize" ? { protocolVersion: 1 } : { sessionId: "native" };
+      queueMicrotask(() => client.ingest(frame({ jsonrpc: "2.0", id: message.id, result })));
+    }
+  }, async () => null, (_id, update) => updates.push(update));
+  await client.open("/work");
+  let delivered = false;
+  const prompt = client.prompt("perform a long task", null, () => { delivered = true; });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(delivered).toBe(true);
+  client.ingest(frame({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "native", update: { sessionUpdate: "agent_message_chunk" } } }));
+  await client.cancel();
+  const request = sent.find((message) => message.method === "session/prompt")!;
+  client.ingest(frame({ jsonrpc: "2.0", id: request.id, result: { stopReason: "cancelled" } }));
+  expect(await prompt).toBe("cancelled");
+  expect(updates).toHaveLength(1);
+  expect(sent.at(-1)?.method).toBe("session/cancel");
+  client.close();
+});

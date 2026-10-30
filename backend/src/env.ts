@@ -13,6 +13,15 @@ import {
 
 const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3400";
 
+/** Renew well before the configured sandbox lifetime, including short operator settings. */
+export function sandboxKeepAliveIntervalMs(
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): number {
+  const minutes = Number(source.SANDBOX_AUTO_STOP_MIN ?? 30);
+  const lifetimeMs = Number.isFinite(minutes) && minutes > 0 ? minutes * 60_000 : 30 * 60_000;
+  return Math.max(100, Math.min(5 * 60_000, Math.floor(lifetimeMs / 3)));
+}
+
 /**
  * Dev mode gates every fail-OPEN behavior in the app: the seeded dev-org
  * fallback for unauthenticated requests (middleware/org.ts), the insecure

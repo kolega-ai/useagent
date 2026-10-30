@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AcpClient } from "./acp-client";
+import { AcpClient, AcpRemoteError } from "./acp-client";
 
 const bytes = (value: unknown) => new TextEncoder().encode(`${JSON.stringify(value)}\n`);
 
@@ -57,5 +57,38 @@ describe("ACP client", () => {
     client.close();
     await expect(pending).rejects.toThrow("disconnected");
     expect(JSON.parse(sent[1]!)).toEqual({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId: "s" } });
+  });
+
+  test("a long-running prompt stays pending until its reply or connection closes", async () => {
+    const sent: string[] = [];
+    const client = new AcpClient(async (line) => { sent.push(line); }, async () => ({}), () => {});
+    const prompt = client.request("session/prompt", {}, null);
+    await Promise.resolve();
+    expect(JSON.parse(sent[0]!).method).toBe("session/prompt");
+    client.ingest(bytes({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s" } }));
+    client.ingest(bytes({ jsonrpc: "2.0", id: 1, result: { stopReason: "end_turn" } }));
+    expect(await prompt).toEqual({ stopReason: "end_turn" });
+    const interrupted = client.request("session/prompt", {}, null);
+    client.close("ACP sandbox process exited");
+    await expect(interrupted).rejects.toThrow("ACP sandbox process exited");
+  });
+
+  test("ordinary requests still time out", async () => {
+    const client = new AcpClient(async () => {}, async () => ({}), () => {});
+    await expect(client.request("initialize", {}, null)).rejects.toThrow("invalid ACP request timeout");
+    await expect(client.request("initialize", {}, 5)).rejects.toThrow("ACP initialize timed out");
+    client.close();
+  });
+
+  test("does not retain agent-provided error text", async () => {
+    const client = new AcpClient(async () => {}, async () => ({}), () => {});
+    const pending = client.request("session/prompt", {}, null);
+    client.ingest(bytes({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "private-native-error-content" } }));
+    const error = await pending.catch((failure) => failure);
+    expect(error).toBeInstanceOf(AcpRemoteError);
+    if (!(error instanceof AcpRemoteError)) throw new Error("expected a protocol error");
+    expect(error.code).toBe(-32603);
+    expect(error.message).not.toContain("private-native-error-content");
+    client.close();
   });
 });
