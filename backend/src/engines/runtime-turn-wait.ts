@@ -175,8 +175,8 @@ export async function waitForRuntimeTurn(
     }
   }, 15_000);
   toolHeartbeat.unref?.();
-  // Keeps the sandbox's lifetime clock pushed out while the turn runs; fails the
-  // turn only when the sandbox stops answering, never because it is slow.
+  // Fail the turn only when the sandbox stops answering, never because it is slow.
+  // Shared sandbox preparation owns the lifetime heartbeat.
   const liveness = (dependencies.watchLiveness ?? watchTurnLiveness)(sandbox);
   const threadId = runtimeThreadId(ctx);
   const priorTurnId = priorSnapshot.thread.latestTurn?.turnId ?? null;

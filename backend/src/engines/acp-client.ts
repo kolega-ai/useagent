@@ -5,6 +5,15 @@ export type AcpMessage = Record<string, unknown>;
 export type AcpSend = (line: string) => Promise<void>;
 export type AcpRequestHandler = (method: string, params: unknown) => Promise<unknown>;
 
+/** An agent's RPC error may contain untrusted or secret text; retain only its code. */
+export class AcpRemoteError extends Error {
+  readonly code: number | null;
+  constructor(code: unknown) {
+    super("ACP agent returned an error");
+    this.code = typeof code === "number" && Number.isSafeInteger(code) ? code : null;
+  }
+}
+
 const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -14,7 +23,7 @@ export class AcpClient {
   private readonly pending = new Map<number, {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
+    timer: ReturnType<typeof setTimeout> | null;
   }>();
   private nextId = 0;
   private closed = false;
@@ -26,12 +35,18 @@ export class AcpClient {
     private readonly onReplySent?: (method: string, params: unknown) => void,
   ) {}
 
-  request(method: string, params: unknown, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, onSent?: () => void): Promise<unknown> {
+  request(method: string, params: unknown, timeoutMs: number | null = DEFAULT_REQUEST_TIMEOUT_MS, onSent?: () => void): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error("ACP connection is closed"));
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return Promise.reject(new Error("invalid ACP request timeout"));
+    // session/prompt is the streaming lifetime of an entire agent turn, not a
+    // short RPC. It ends on reply, cancellation, transport loss, or session
+    // close; the outer run owns any operator-configured timeout.
+    if ((timeoutMs === null && method !== "session/prompt") ||
+      (timeoutMs !== null && (!Number.isFinite(timeoutMs) || timeoutMs <= 0))) {
+      return Promise.reject(new Error("invalid ACP request timeout"));
+    }
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = timeoutMs === null ? null : setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`ACP ${method} timed out`));
       }, timeoutMs);
@@ -70,7 +85,7 @@ export class AcpClient {
     if (this.closed) return;
     this.closed = true;
     for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
+      if (pending.timer) clearTimeout(pending.timer);
       pending.reject(new Error(reason));
     }
     this.pending.clear();
@@ -105,11 +120,10 @@ export class AcpClient {
     const pending = this.pending.get(message.id);
     if (!pending) return;
     this.pending.delete(message.id);
-    clearTimeout(pending.timer);
+    if (pending.timer) clearTimeout(pending.timer);
     if (message.error !== undefined) {
-      const error = message.error as { code?: unknown; message?: unknown } | null;
-      const detail = typeof error?.message === "string" ? error.message.slice(0, 400) : "request failed";
-      pending.reject(new Error(`ACP error: ${detail}`));
+      const error = message.error as { code?: unknown } | null;
+      pending.reject(new AcpRemoteError(error?.code));
     } else if ("result" in message) pending.resolve(message.result);
     else pending.reject(new Error("ACP response has no result"));
   }

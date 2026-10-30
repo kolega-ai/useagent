@@ -7,7 +7,7 @@ import { parseExpectedSandboxBinding, type ExpectedSandboxBinding } from "../san
 import type { SandboxHandle } from "../sandboxes/provider";
 import { sessionCapabilities } from "./capabilities";
 import { acpApprovals } from "./acp-approvals";
-import { SandboxAcpSession, type AcpRuntime } from "./acp-sandbox-bridge";
+import { SandboxAcpSession, acpPromptFailure, type AcpRuntime } from "./acp-sandbox-bridge";
 import { ACP_AGENT_VERSION } from "./acp-runtime-config";
 
 export const ACP_SESSION_GENERATION = 1;
@@ -119,7 +119,7 @@ export const acpProviderDriver: ProviderDriver = {
       const bridge = await checkedSession(request.session, request.metadata, request.threadId);
       await bridge.prompt(request.input.text);
       return { status: "ok" };
-    } catch { return error("steer_failed", "Kolega Code could not accept the prompt"); }
+    } catch (cause) { return error("steer_failed", acpPromptFailure(cause)); }
   },
   async cancel(session, _reason, metadata) {
     if (!providerSessionMatchesDriver(acpProviderDriver, session)) return error("stale_session", "Kolega Code session authority is stale");

@@ -391,6 +391,11 @@ backend. Daytona applies [tier-based outbound restrictions](https://www.daytona.
 on restricted tiers, a custom gateway hostname may require Daytona support or a
 different tier. Check connectivity from a sandbox before enabling the engine.
 
+For providers with a sandbox lifetime, UseAgent refreshes it while a turn is
+active, including during long-running tools and approval waits. Kolega turns
+are not limited to 30 minutes by the agent connection. Provider account limits
+and operator-configured run timeouts still apply.
+
 The native image recipe installs Kolega Code 0.47.1 into a Python 3.11+
 virtual environment using the hash-locked `backend/acp-runtime/requirements.txt`.
 Rebuild the deployment's native image or Daytona snapshot before enabling the

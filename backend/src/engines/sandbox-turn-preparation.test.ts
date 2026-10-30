@@ -87,6 +87,40 @@ function freshLease(sandbox: SandboxHandle) {
 }
 
 describe("sandbox turn provider cleanup", () => {
+  test("keeps a retained sandbox alive through preparation and execution, then stops", async () => {
+    const retained = sandboxFixture();
+    let starts = 0;
+    let stops = 0;
+    const prepared = await prepareSandboxTurn(context(), {
+      snapshot: "runtime", chip: "agent", timingPrefix: "agent",
+      async prepareProvider() { expect(starts).toBe(1); return {}; },
+    }, {
+      acquireThreadSandbox: async () => retainedLease(retained.sandbox),
+      startKeepAlive: (sandbox) => {
+        expect(sandbox).toBe(retained.sandbox);
+        starts += 1;
+        return () => { stops += 1; };
+      },
+    });
+    expect(stops).toBe(0);
+    await prepared.close();
+    await prepared.close();
+    expect(stops).toBe(1);
+  });
+
+  test("stops keeping a sandbox alive if preparation fails", async () => {
+    const retained = sandboxFixture({ cloneFails: true });
+    let stops = 0;
+    await expect(prepareSandboxTurn(context(["useagenthq/useagent"]), {
+      snapshot: "runtime", chip: "agent", timingPrefix: "agent",
+      async prepareProvider() { return {}; },
+    }, {
+      acquireThreadSandbox: async () => retainedLease(retained.sandbox),
+      startKeepAlive: () => () => { stops += 1; },
+    })).rejects.toThrow("failed to clone");
+    expect(stops).toBe(1);
+  });
+
   test("runs the unsupported-ACL fallback and stops on its first permission failure", async () => {
     for (const scenario of [
       { aclFailure: "unsupported", chownFailure: false, expectedExit: 0 },

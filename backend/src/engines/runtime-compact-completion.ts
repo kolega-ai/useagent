@@ -15,8 +15,6 @@ import {
   RUNTIME_COMPACT_TIMEOUT_MS,
 } from "./runtime-compact-contract";
 
-const SANDBOX_KEEPALIVE_MS = 5 * 60_000;
-
 interface RuntimeCompactWaitDependencies {
   readonly followRuntimeThread: typeof followRuntimeThread;
   readonly recordProviderEvent?: typeof recordProviderEvent;
@@ -66,10 +64,6 @@ export async function waitForRuntimeCompact(
   let completed = false;
   let failure: string | null = null;
   let streamError: unknown;
-  const keepAlive = setInterval(() => {
-    void sandbox.keepAlive?.().catch(() => {});
-  }, SANDBOX_KEEPALIVE_MS);
-  keepAlive.unref?.();
   try {
     await dependencies.followRuntimeThread({
       sandbox,
@@ -102,8 +96,6 @@ export async function waitForRuntimeCompact(
     });
   } catch (error) {
     streamError = error;
-  } finally {
-    clearInterval(keepAlive);
   }
   ctx.signal.throwIfAborted();
   if (deadline.aborted) throw new Error(COMPACT_TIMED_OUT_WAITING_SUMMARY);

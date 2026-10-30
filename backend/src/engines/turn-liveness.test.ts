@@ -5,14 +5,12 @@ import { pingRuntimeSocket, SandboxUnresponsiveError, watchTurnLiveness } from "
 const fast = { intervalMs: 5, silenceMs: 20, failureLimit: 3 };
 
 describe("turn liveness", () => {
-  test("a silent stream on a sandbox that stops answering fails the turn and stops the keepAlive", async () => {
-    let keepAlives = 0;
+  test("a silent stream on a sandbox that stops answering fails the turn", async () => {
     let probes = 0;
     const liveness = watchTurnLiveness(
-      { keepAlive: async () => { keepAlives += 1; } } as never,
+      {} as never,
       { ...fast, probe: async () => { probes += 1; return false; } },
     );
-    expect(keepAlives).toBe(1); // pushed out at once, not five minutes in
     const reason = await new Promise((resolve) => liveness.signal.addEventListener("abort", () => resolve(liveness.signal.reason)));
     expect(reason).toBeInstanceOf(SandboxUnresponsiveError);
     expect((reason as Error).message).toBe("The sandbox stopped responding");

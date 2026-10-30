@@ -24,6 +24,7 @@ import { agentSourceControlCredentials, materializeAgentSourceControl, sourceCon
 import { ensureSourceControlTools } from "./source-control-tools";
 import { resolveThreadWorkspaceFiles } from "../workspace-files/store";
 import { materializeWorkspaceFiles } from "../workspace-files/materialize";
+import { startSandboxKeepAlive } from "./sandbox-keepalive";
 
 export interface SandboxTurnPreparationOptions<T> {
   readonly snapshot: string;
@@ -88,6 +89,7 @@ export async function prepareSandboxTurn<T>(
   options: SandboxTurnPreparationOptions<T>,
   dependencies: {
     readonly acquireThreadSandbox: typeof acquireThreadSandbox;
+    readonly startKeepAlive?: typeof startSandboxKeepAlive;
   } = { acquireThreadSandbox },
 ): Promise<PreparedSandboxTurn<T>> {
   const secretInjection = await composeSecretEnv(ctx, { excludeNames: PROVIDER_SECRET_NAMES });
@@ -121,6 +123,12 @@ export async function prepareSandboxTurn<T>(
   });
   endSandbox?.();
 
+  // Keep the attached sandbox alive during setup and the entire native turn,
+  // including long-running tools and approval waits, for every engine.
+  const stopKeepAlive = (dependencies.startKeepAlive ?? startSandboxKeepAlive)(lease.sandbox, () => {
+    console.warn(`[sandbox] Could not extend the lifetime for run ${ctx.runId}`);
+  });
+
   const endPrepare = ctx.timing?.begin(`${options.timingPrefix}.prepare`);
   let providerState: T | undefined;
   let providerPrepared = false;
@@ -129,6 +137,7 @@ export async function prepareSandboxTurn<T>(
   const close = async (): Promise<void> => {
     if (closed) return;
     closed = true;
+    stopKeepAlive();
     try {
       if (providerPrepared && options.closeProvider) {
         await options.closeProvider(providerState as T);

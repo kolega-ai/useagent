@@ -90,7 +90,7 @@ export class AcpSessionControl {
     if (!selected || selected.currentValue !== value) throw new Error("ACP agent did not confirm the requested session configuration");
   }
 
-  async prompt(text: string, timeoutMs: number, onSent?: () => void): Promise<string> {
+  async prompt(text: string, timeoutMs: number | null, onSent?: () => void): Promise<string> {
     const sessionId = this.requireSession();
     const result = object(await this.client.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] }, timeoutMs, onSent));
     if (typeof result?.stopReason !== "string") throw new Error("ACP prompt ended without a stop reason");

@@ -1,12 +1,9 @@
-import type { SandboxHandle } from "../sandboxes/provider";
 import { runtimeEnvironmentHealthy } from "./runtime-environment";
 
 // A turn may run as long as its work needs; nothing here is a time limit. The
 // turn fails only when its sandbox is gone: the runtime stream has gone silent
 // (no frame, no pong) AND the sandbox has failed several health probes in a row.
 
-/** How often a running turn pushes out the sandbox's own lifetime clock (providers with an absolute deadline). */
-const SANDBOX_KEEPALIVE_MS = 5 * 60_000;
 const PROBE_INTERVAL_MS = 30_000;
 const STREAM_SILENCE_MS = 60_000;
 const PROBE_FAILURES_BEFORE_DEAD = 4;
@@ -32,7 +29,7 @@ export interface TurnLiveness {
   dispose(): void;
 }
 
-type LivenessSandbox = Pick<SandboxHandle, "keepAlive"> & Parameters<typeof runtimeEnvironmentHealthy>[0];
+type LivenessSandbox = Parameters<typeof runtimeEnvironmentHealthy>[0];
 
 async function sandboxAnswers(sandbox: LivenessSandbox): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -63,10 +60,6 @@ export function watchTurnLiveness(
   let failures = 0;
   let probing = false;
 
-  // The first push happens now: a reused sandbox may have little lifetime left.
-  const keepAlive = () => void sandbox.keepAlive?.().catch(() => {});
-  keepAlive();
-  const keepAliveTimer = setInterval(keepAlive, SANDBOX_KEEPALIVE_MS);
   const probeTimer = setInterval(async () => {
     if (probing || controller.signal.aborted) return;
     if (Date.now() - lastHeard < silenceMs) {
@@ -80,16 +73,13 @@ export function watchTurnLiveness(
       probing = false;
     }
     if (failures >= failureLimit && Date.now() - lastHeard >= silenceMs && !controller.signal.aborted) {
-      // Stop extending a dead box before the turn unwinds.
       dispose();
       controller.abort(new SandboxUnresponsiveError());
     }
   }, options.intervalMs ?? PROBE_INTERVAL_MS);
-  keepAliveTimer.unref?.();
   probeTimer.unref?.();
 
   function dispose(): void {
-    clearInterval(keepAliveTimer);
     clearInterval(probeTimer);
   }
 
