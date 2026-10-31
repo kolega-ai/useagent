@@ -72,6 +72,12 @@ describe("collapsed application sidebar", () => {
     expect(html).toContain('aria-label="Automations"');
   });
 
+  test("offers automations as a main navigation link when the rail is expanded", () => {
+    const html = renderSidebar(<ThreadSidebar />, true);
+    expect(html).toContain('href="/agent/automations"');
+    expect(html).toContain(">Automations</span>");
+  });
+
   test("links a running automation directly from the collapsed rail", () => {
     const html = renderCollapsed(<CollapsedAutomationRuns pathname="/session/run-1" automations={[{
       id: "a1", name: "Catalog refresh", created_at: "2026-10-01T12:00:00Z", last_run_at: "2026-10-29T12:00:00Z",

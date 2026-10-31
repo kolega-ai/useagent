@@ -37,6 +37,7 @@ describe("persistent shell route groups", () => {
   test("the thread rail derives its active item from the pathname", () => {
     expect(threadSidebarActiveFor("/agent/new")).toBe("new");
     expect(threadSidebarActiveFor("/dashboard")).toBe("dashboard");
+    expect(threadSidebarActiveFor("/agent/automations")).toBe("automations");
     expect(threadSidebarActiveFor("/bots")).toBe("bots");
     expect(threadSidebarActiveFor("/bots/abc")).toBe("bots");
     expect(threadSidebarActiveFor("/settings")).toBe("settings");
@@ -52,7 +53,7 @@ describe("persistent shell route groups", () => {
     expect(librarySidebarActiveFor("/agent/artifacts/abc")).toBe("artifacts");
     expect(librarySidebarActiveFor("/artifacts")).toBe("artifacts");
     expect(librarySidebarActiveFor("/review")).toBe("reviews");
-    expect(librarySidebarActiveFor("/agent/automations")).toBe("automations");
+    expect(librarySidebarActiveFor("/agent/automations")).toBeUndefined();
     expect(librarySidebarActiveFor("/dashboard")).toBeUndefined();
     expect(librarySidebarActiveFor(null)).toBeUndefined();
   });
