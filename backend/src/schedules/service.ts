@@ -522,7 +522,14 @@ async function updateSchedulePatch(
 
   if (body.codePolicy !== undefined || patch.repos !== undefined || patch.engine !== undefined) {
     try {
-      const codePolicy = parseCodePolicy(body.codePolicy);
+      let codePolicy = parseCodePolicy(body.codePolicy);
+      // Older clients do not know this field. Preserve an existing opt-in when
+      // they save the same repository and engine without changing its permission.
+      if (codePolicy?.version === 2 && codePolicy.nativeAuto === undefined && current.codePolicy?.version === 2 &&
+          current.codePolicy.nativeAuto && codePolicy.allowSandboxActions && codePolicy.repository === current.codePolicy.repository &&
+          (patch.engine ?? current.engine) === current.engine) {
+        codePolicy = { ...codePolicy, nativeAuto: true };
+      }
       const effectivePolicy = codePolicy === undefined ? current.codePolicy : codePolicy;
       if (effectivePolicy && current.botId) throw new Error("Repository actions require an independent automation, not a bot routine.");
       assertCodePolicyRepository(effectivePolicy, patch.repos ?? current.repos, current.userId);

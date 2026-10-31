@@ -421,8 +421,11 @@ sandbox can load the native session on a later turn; losing the sandbox does not
 restore that native session or its files. An interrupted in-flight turn cannot
 currently be reconstructed. Permission requests use the existing approval card;
 the composer's Plan option selects Plan mode and declines commands and writes;
-Manual selects Build mode and asks for native permissions. An automation can
-explicitly opt in to automatic responses to eligible native permission requests.
+Manual selects Build mode and asks for native permissions. Repository automations
+can either have UseAgent approve eligible requests automatically, or opt in to
+Kolega Code's native auto mode. Native auto runs actions without a per-action
+UseAgent approval check. Use Stop to stop an active run; changing an automation
+does not revoke actions already executing in native auto mode.
 ACP output that cannot be represented by the
 shared event vocabulary is not projected as a separate UI protocol.
 When one tool call reports changes to multiple files, UseAgent lists the files

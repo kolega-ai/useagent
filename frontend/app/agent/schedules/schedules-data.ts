@@ -103,7 +103,7 @@ export type AutomationCodePolicy = {
   repository: string;
   draft: boolean;
   allowSandboxActions: boolean;
-} & ({ version: 1; mode: "publish" | "review" } | { version: 2; mode: "agent"; draft: false });
+} & ({ version: 1; mode: "publish" | "review" } | { version: 2; mode: "agent"; draft: false; nativeAuto?: boolean });
 
 /** A change notification can refresh the list before the create request returns. */
 export function addCreatedAutomation(previous: readonly ScheduleRecord[] | null, created: ScheduleRecord): ScheduleRecord[] {

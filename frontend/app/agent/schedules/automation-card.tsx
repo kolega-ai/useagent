@@ -101,6 +101,9 @@ export function AutomationCard({
                 {schedule.code_policy.mode === "agent" ? "Repository work" : schedule.code_policy.mode === "publish" ? "Opens changes" : "Reviews and merges"}
               </Chip>
             )}
+            {schedule.code_policy?.version === 2 && schedule.code_policy.nativeAuto ? (
+              <Chip variant="caption" color="soft" className="shrink-0">Native auto</Chip>
+            ) : null}
           </div>
           <p className="mt-0.5 line-clamp-1 text-caption-1-regular text-text-secondary">
             {schedule.prompt}

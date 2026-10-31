@@ -28,3 +28,13 @@ test("agent-managed repository work has a versioned policy and retains the selec
   expect(() => assertCodePolicyEngine(input, "kolega")).not.toThrow();
   expect(() => assertCodePolicyEngine(input, "pi")).not.toThrow();
 });
+
+test("native auto is an explicit Kolega agent opt-in", () => {
+  const policy = { version: 2, mode: "agent", repository: "owner/repo", draft: false, allowSandboxActions: true, nativeAuto: true } as const;
+  expect(parseCodePolicy(policy)).toEqual(policy);
+  expect(() => assertCodePolicyEngine(policy, "kolega")).not.toThrow();
+  expect(() => assertCodePolicyEngine(policy, "codex")).toThrow("only for Kolega");
+  expect(() => parseCodePolicy({ ...policy, allowSandboxActions: false })).toThrow();
+  expect(() => parseCodePolicy({ ...policy, nativeAuto: "true" })).toThrow();
+  expect(() => parseCodePolicy({ ...policy, version: 1, mode: "publish", draft: true })).toThrow();
+});
