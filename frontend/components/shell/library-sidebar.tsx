@@ -7,7 +7,6 @@ import {
   RiBookMarkedLine,
   RiBrainLine,
   RiBroadcastLine,
-  RiCalendarScheduleLine,
   RiDatabase2Line,
   RiFlashlightLine,
   RiGitPullRequestLine,
@@ -26,7 +25,6 @@ import { SidebarSectionLabel } from "./sidebar-nav";
 export type LibrarySidebarActive =
   | "skills"
   | "playbooks"
-  | "automations"
   | "knowledge"
   | "memory"
   | "learnings"
@@ -47,12 +45,6 @@ const LIBRARY_ITEMS: {
 }[] = [
   { key: "skills", href: "/skills", icon: RiFlashlightLine, label: "Skills" },
   { key: "playbooks", href: "/playbooks", icon: RiBookMarkedLine, label: "Playbooks" },
-  {
-    key: "automations",
-    href: "/agent/automations",
-    icon: RiCalendarScheduleLine,
-    label: "Automations",
-  },
   { key: "knowledge", href: "/knowledge", icon: RiBrainLine, label: "Knowledge" },
   { key: "memory", href: "/memory", icon: RiDatabase2Line, label: "Memory" },
   { key: "learnings", href: "/learnings", icon: RiLightbulbLine, label: "Learnings" },

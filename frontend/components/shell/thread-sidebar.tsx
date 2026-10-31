@@ -32,7 +32,7 @@ import { SidebarProjects } from "./sidebar-projects";
 import { useSidebarThreads } from "./sidebar-threads-provider";
 import { WorkingProjectStatus } from "./working-project-status";
 
-export type ThreadSidebarActive = "new" | "dashboard" | "bots" | "library" | "settings";
+export type ThreadSidebarActive = "new" | "dashboard" | "automations" | "bots" | "library" | "settings";
 
 /** Icon-rail stand-in for the thread tree: the six most recent threads with tooltips. */
 function CollapsedThreads() {
@@ -78,6 +78,7 @@ export function threadSidebarActiveFor(pathname: string | null): ThreadSidebarAc
   if (!pathname) return undefined;
   if (pathname === "/agent/new") return "new";
   if (pathname === "/dashboard") return "dashboard";
+  if (pathname === "/agent/automations") return "automations";
   if (pathname === "/bots" || pathname.startsWith("/bots/")) return "bots";
   if (pathname === "/settings") return "settings";
   return undefined;
@@ -107,13 +108,13 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
       active: current === "dashboard",
       trailing: <WorkingProjectStatus />,
     },
-    ...(isCollapsed ? [{
+    {
       id: "automations",
       title: "Automations",
       icon: RiCalendarScheduleLine,
       href: "/agent/automations",
-      active: pathname === "/agent/automations",
-    }] : []),
+      active: current === "automations",
+    },
     ...(catalog?.bots
       ? [
           {

@@ -91,7 +91,6 @@ describe("unified shell contract", () => {
     const librarySurfaces = [
       "Skills",
       "Playbooks",
-      "Automations",
       "Knowledge",
       "Wiki",
       "Apps",
@@ -100,6 +99,7 @@ describe("unified shell contract", () => {
     ];
 
     expect(threadSidebar).toContain('title: "Customize"');
+    expect(threadSidebar).toContain('title: "Automations"');
     for (const label of librarySurfaces) {
       expect(librarySidebar).toContain(`label: "${label}"`);
     }
