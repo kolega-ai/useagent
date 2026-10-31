@@ -56,10 +56,9 @@ export function permissionModeSupported(engine: string, mode?: PermissionMode): 
   return true;
 }
 
-/** Keep an automation on its existing per-request authority checks when its
- * driver can answer native approvals from the automation policy. */
-export function automationPermissionMode(engine: string, allowSandboxActions: boolean): PermissionMode | null {
-  const mediated = canonicalEngine(engine) === "kolega";
+/** Kolega normally mediates each approval; native auto is an explicit opt-in. */
+export function automationPermissionMode(engine: string, allowSandboxActions: boolean, nativeAuto = false): PermissionMode | null {
+  const mediated = canonicalEngine(engine) === "kolega" && !nativeAuto;
   if (allowSandboxActions && !mediated && permissionModeSupported(engine, "full-access")) return "full-access";
   return permissionModeSupported(engine, "approval-required") ? "approval-required" : null;
 }

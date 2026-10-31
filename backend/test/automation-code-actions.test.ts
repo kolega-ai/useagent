@@ -34,6 +34,24 @@ async function fixture(attach = true, selectedPolicy: AutomationCodePolicy = pol
 }
 
 describe("unattended repository actions", () => {
+  test("the owner can opt into native auto and an older editor cannot silently clear it", async () => {
+    const f = await fixture(true, directPolicy);
+    const update = (codePolicy: Record<string, unknown>) => json<{ code_policy: AutomationCodePolicy }>(`/api/schedules/${f.schedule.id}`, {
+      method: "PATCH", cookies: f.session.cookies, body: { codePolicy },
+    });
+    const enabled = await update({ ...directPolicy, nativeAuto: true });
+    expect(enabled.status).toBe(200);
+    expect(enabled.body.code_policy).toEqual({ ...directPolicy, nativeAuto: true });
+    const oldEditor = await update(directPolicy);
+    expect(oldEditor.status).toBe(200);
+    expect(oldEditor.body.code_policy).toEqual({ ...directPolicy, nativeAuto: true });
+    const disabled = await update({ ...directPolicy, nativeAuto: false });
+    expect(disabled.status).toBe(200);
+    expect(disabled.body.code_policy).toEqual({ ...directPolicy, nativeAuto: false });
+    const invalid = await update({ ...directPolicy, allowSandboxActions: false, nativeAuto: true });
+    expect(invalid.status).toBe(400);
+  });
+
   test("an agent-managed firing finishes without queuing a backend publication", async () => {
     const f = await fixture(true, directPolicy);
     expect(f.action.target).toBeNull();

@@ -66,6 +66,7 @@ export function AutomationEditorModal({
   const [codeRepo, setCodeRepo] = useState("");
   const [codeDraft, setCodeDraft] = useState(true);
   const [allowSandboxActions, setAllowSandboxActions] = useState(true);
+  const [nativeAuto, setNativeAuto] = useState(false);
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [projects, setProjects] = useState<RepositoryFileProject[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -84,6 +85,7 @@ export function AutomationEditorModal({
     setCodeRepo(schedule?.code_policy?.repository ?? (schedule ? "" : initialRepository ?? ""));
     setCodeDraft(schedule?.code_policy?.draft ?? true);
     setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? true);
+    setNativeAuto(schedule?.code_policy?.version === 2 && schedule.code_policy.nativeAuto === true);
     setSelectedFiles(schedule?.workspace_file_selection ?? []);
     setBusy(false);
     setError(null);
@@ -126,7 +128,9 @@ export function AutomationEditorModal({
         ...(codeMode === "none" ? { codePolicy: null, ...(schedule?.code_policy ? { repos: [] } : {}) } : {
           repos: [codeRepo],
           codePolicy: codeMode === "agent"
-            ? { version: 2, mode: "agent", repository: codeRepo, draft: false, allowSandboxActions }
+            ? { version: 2, mode: "agent", repository: codeRepo, draft: false, allowSandboxActions,
+                ...(engine === "kolega" && allowSandboxActions && nativeAuto ? { nativeAuto: true } :
+                  schedule?.code_policy?.version === 2 && schedule.code_policy.nativeAuto ? { nativeAuto: false } : {}) }
             : { version: 1, mode: codeMode, repository: codeRepo, draft: codeDraft, allowSandboxActions },
         }),
       });
@@ -269,6 +273,10 @@ export function AutomationEditorModal({
                 codeMode === "review" ? <HintText>Reviews one open request per run and merges only the approved revision when the provider permits it.</HintText> :
                   <HintText>The agent can use connected GitHub and GitLab accounts to carry out your instructions.</HintText>}
               <Checkbox size="sm" isSelected={allowSandboxActions} onChange={setAllowSandboxActions}>{codeMode === "agent" ? "Allow agent actions without asking" : "Allow sandbox commands and file changes without asking"}</Checkbox>
+              {codeMode === "agent" && engine === "kolega" && allowSandboxActions ? <>
+                <Checkbox size="sm" isSelected={nativeAuto} onChange={setNativeAuto}>Use Kolega Code native auto mode</Checkbox>
+                <HintText>Native auto runs actions without per-action approval checks. Use Stop to stop an active run.</HintText>
+              </> : null}
               {codeMode !== "agent" ? <HintText>This setting authorizes the selected repository action without a separate approval for each request.</HintText> : null}
             </> : null}
           </div>

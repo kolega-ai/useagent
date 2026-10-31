@@ -32,7 +32,7 @@ export type AutomationCodePolicy = {
   readonly draft: boolean;
   readonly allowSandboxActions: boolean;
 } & ({ readonly version: 1; readonly mode: "publish" | "review" } |
-  { readonly version: 2; readonly mode: "agent"; readonly draft: false });
+  { readonly version: 2; readonly mode: "agent"; readonly draft: false; readonly nativeAuto?: boolean });
 
 export const schedules = pgTable(
   "schedules",

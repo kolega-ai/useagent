@@ -178,6 +178,13 @@ describe("Automations API client", () => {
       .rejects.toThrow("backend did not confirm the repository action");
   });
 
+  test("does not claim native auto was saved if the backend omitted it", async () => {
+    const codePolicy = { version: 2 as const, mode: "agent" as const, repository: "owner/repo", draft: false as const, allowSandboxActions: true };
+    responses.push(Response.json({ ...automation, code_policy: codePolicy }));
+    await expect(updateSchedule(automation.id, { codePolicy: { ...codePolicy, nativeAuto: true } }))
+      .rejects.toThrow("backend did not confirm the repository action");
+  });
+
   test("updates an Automation through its canonical item endpoint", async () => {
     responses.push(Response.json({ ...automation, enabled: true }));
 

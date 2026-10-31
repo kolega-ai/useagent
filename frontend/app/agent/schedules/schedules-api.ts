@@ -26,7 +26,9 @@ function verifyCodePolicy(saved: ScheduleRecord, requested: AutomationCodePolicy
   const actual = saved.code_policy;
   if (actual === undefined || (requested === null ? actual !== null :
     !actual || actual.version !== requested.version || actual.mode !== requested.mode || actual.repository !== requested.repository ||
-      actual.draft !== requested.draft || actual.allowSandboxActions !== requested.allowSandboxActions)) {
+      actual.draft !== requested.draft || actual.allowSandboxActions !== requested.allowSandboxActions ||
+      (requested.version === 2 && requested.nativeAuto !== undefined &&
+        (actual.version !== 2 || Boolean(actual.nativeAuto) !== requested.nativeAuto)))) {
     throw new AutomationRefusal("The backend did not confirm the repository action. Refresh after the backend is updated and check this automation before running it.");
   }
 }

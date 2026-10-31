@@ -59,8 +59,10 @@ describe("permission modes", () => {
     expect(permissionModeSupported("pi", "full-access")).toBe(true);
   });
 
-  test("automations keep mediated authority checks when available", () => {
+  test("automations use native full access only when sandbox actions are enabled", () => {
     expect(automationPermissionMode("kolega", true)).toBe("approval-required");
+    expect(automationPermissionMode("kolega", true, true)).toBe("full-access");
+    expect(automationPermissionMode("kolega", false, true)).toBe("approval-required");
     expect(automationPermissionMode("kolega", false)).toBe("approval-required");
     expect(automationPermissionMode("codex", true)).toBe("full-access");
     expect(automationPermissionMode("codex", false)).toBe("approval-required");

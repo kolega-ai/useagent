@@ -66,6 +66,11 @@ test("agent-managed repository work is labeled without claiming a publication", 
   expect(markup).not.toContain("Reviews and merges");
 });
 
+test("native auto is visible only for an opted-in automation", () => {
+  expect(render(schedule())).not.toContain("Native auto");
+  expect(render(schedule({ code_policy: { version: 2, mode: "agent", repository: "owner/repo", draft: false, allowSandboxActions: true, nativeAuto: true } }))).toContain("Native auto");
+});
+
 test("creation does not duplicate a schedule already received in a change notification", () => {
   const created = schedule();
   const other = schedule({ id: "auto-2" });

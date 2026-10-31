@@ -105,7 +105,8 @@ export async function fireScheduleWithOutcome(
   finally { clearTimeout(selectionTimer); }
   const effectivePrompt = codeAction ? schedule.prompt + codeActionPrompt(codeAction.policy, codeAction.target) : schedule.prompt;
   const automationPermission = codeAction
-    ? automationPermissionMode(schedule.engine, codeAction.policy.allowSandboxActions)
+    ? automationPermissionMode(schedule.engine, codeAction.policy.allowSandboxActions,
+      codeAction.policy.version === 2 && codeAction.policy.nativeAuto === true)
     : undefined;
   if (codeAction && !automationPermission) throw new Error("This agent cannot honor the automation's sandbox permission setting.");
   const runId = crypto.randomUUID();
