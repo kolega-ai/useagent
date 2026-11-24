@@ -103,6 +103,21 @@ const RULES: readonly Rule[] = [
       return threadReach(orgId, scope, request?.threadId);
     },
   },
+  // A project's own task list (never the cross-project or unfiled list).
+  {
+    methods: ["GET"],
+    pattern: /^\/api\/tasks$/,
+    check: async (orgId, scope, _m, url) => {
+      if (url.searchParams.get("scope") === "all") return false;
+      const id = url.searchParams.get("project_id");
+      if (id) return scopeReaches(scope, id);
+      const key = url.searchParams.get("project")?.trim();
+      if (!key) return false;
+      const [project] = await db.select({ id: projects.id }).from(projects)
+        .where(and(eq(projects.orgId, orgId), eq(projects.key, key))).limit(1);
+      return Boolean(project) && scopeReaches(scope, project!.id);
+    },
+  },
   // Merge requests from their own threads (the routes check the author; prepare checks the run's project).
   { methods: ["GET"], pattern: /^\/api\/gitlab\/publications\/latest\/([^/]+)$/, check: (o, s, m) => runReach(o, s, m[1]) },
   { methods: ["POST"], pattern: /^\/api\/gitlab\/publications\/prepare$/ },

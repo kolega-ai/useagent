@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createOrgSession, fetchApi, joinOrg, json, testProjectId, uid, userIdOf, type OrgSession } from "./helpers";
-import { member, invitation } from "../src/db/auth-schema";
+import { member } from "../src/db/auth-schema";
 import { db } from "../src/db/client";
 import { invitationProjects, projectMembers, runs, schedules } from "../src/db/schema";
 import { organizationLimitReached } from "../src/auth/organization-limit";
@@ -9,7 +9,6 @@ import { executeAutomationToolLocal } from "../src/knowledge/gateway/automation-
 import { withOrgLock } from "../src/org-lock";
 import { prepareGitLabPublication } from "../src/gitlab/publication-prepare";
 import { ProjectAccessError } from "../src/projects/access";
-import { grantInvitationProjects } from "../src/projects/members";
 import { ensureProject } from "../src/projects/repo";
 import { createChildSession } from "../src/runs/child-sessions";
 import { createRun } from "../src/runs/repo";
@@ -58,6 +57,14 @@ describe("project members", () => {
       expect([path, res.status]).toEqual([path, 403]);
     }
     expect((await fetchApi("/api/dashboard", { cookies: w.owner.cookies })).status).not.toBe(403);
+  });
+
+  test("their workspace list names them a project member, so the app trims itself", async () => {
+    const w = await workspace("pm-role");
+    const listed = await json<{ workspaces: { id: string; role: string }[] }>("/api/team/workspaces", { cookies: w.memberSession.cookies });
+    expect(listed.body.workspaces.find((row) => row.id === w.owner.orgId)?.role).toBe("project_member");
+    const owners = await json<{ workspaces: { id: string; role: string }[] }>("/api/team/workspaces", { cookies: w.owner.cookies });
+    expect(owners.body.workspaces.find((row) => row.id === w.owner.orgId)?.role).toBe("owner");
   });
 
   test("lists hold only their projects: projects, automations and threads", async () => {
@@ -170,6 +177,13 @@ describe("project members", () => {
     expect(await refused(`/api/gitlab/publications/latest/${elsewhere}`)).toBe(true);
     expect(await refused("/api/sandbox-minutes")).toBe(false);
 
+    // A project's own task list, never another's, the unfiled list or every project's.
+    expect(await refused(`/api/tasks?project=${encodeURIComponent(`gitlab.com/group/mine-${tag}`)}`)).toBe(false);
+    expect(await refused(`/api/tasks?project_id=${mine.id}`)).toBe(false);
+    expect(await refused(`/api/tasks?project=${encodeURIComponent(`acme/other-${tag}`)}`)).toBe(true);
+    expect(await refused("/api/tasks")).toBe(true);
+    expect(await refused(`/api/tasks?scope=all&project_id=${mine.id}`)).toBe(true);
+
     // The GitLab picker offers only their projects' repositories; the owner sees all of them.
     const token = `glpat-${tag}`;
     const fetcher = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -278,9 +292,9 @@ describe("project members", () => {
 
   test("an invitation names its projects, and accepting it grants them", async () => {
     const w = await workspace("pm-invite");
-    const email = `${uid("invitee")}@example.com`;
+    const invitee = await createOrgSession("pm-invitee");
     const invite = (body: Record<string, unknown>) =>
-      json<{ id?: string; message?: string }>("/api/auth/organization/invite-member", { method: "POST", cookies: w.owner.cookies, body: { email, ...body } });
+      json<{ id?: string; message?: string }>("/api/auth/organization/invite-member", { method: "POST", cookies: w.owner.cookies, body: { email: invitee.email, ...body } });
     expect((await invite({ role: "project_member" })).status).toBe(400);
     expect((await invite({ role: "member", projectIds: [w.first] })).status).toBe(400);
     const made = await invite({ role: "project_member", projectIds: [w.first] });
@@ -288,15 +302,16 @@ describe("project members", () => {
     const named = await db.select({ projectId: invitationProjects.projectId }).from(invitationProjects).where(eq(invitationProjects.invitationId, made.body.id!));
     expect(named.map((row) => row.projectId)).toEqual([w.first]);
 
-    // Acceptance grants them to a project member (the library adds the membership).
-    const invitee = await createOrgSession("pm-invitee");
+    // The invitee reads which projects it opens, then accepts through the real route.
+    const preview = await json<{ role: string; projects: string[] }>(`/api/auth/invitation-preview?id=${made.body.id}`, { cookies: invitee.cookies });
+    expect(preview.body).toMatchObject({ role: "project_member", projects: ["first"] });
+    const accepted = await fetchApi("/api/auth/organization/accept-invitation", { method: "POST", cookies: invitee.cookies, body: { invitationId: made.body.id } });
+    expect(accepted.status).toBe(200);
     const inviteeId = await userIdOf(invitee);
-    await db.insert(member).values({ id: uid("member"), organizationId: w.owner.orgId, userId: inviteeId, role: "project_member", createdAt: new Date() });
-    expect(await grantInvitationProjects(w.owner.orgId, made.body.id!, inviteeId, null)).toBe(1);
+    const [joined] = await db.select({ role: member.role }).from(member).where(and(eq(member.organizationId, w.owner.orgId), eq(member.userId, inviteeId)));
+    expect(joined?.role).toBe("project_member");
     const granted = await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, inviteeId));
     expect(granted.map((row) => row.projectId)).toEqual([w.first]);
-    const [row] = await db.select({ role: invitation.role }).from(invitation).where(eq(invitation.id, made.body.id!));
-    expect(row?.role).toBe("project_member");
   });
 
   test("someone who is only a project member makes no workspace of their own", async () => {

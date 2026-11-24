@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gt, inArray } from "drizzle-orm";
+import { confinedToProjects } from "../projects/access";
 import { memberProjectIds, orgProjectIds, setMemberProjects } from "../projects/members";
 import { asOrgAdmin } from "../provider-connections/repo";
 import { Hono } from "hono";
@@ -103,10 +104,13 @@ teamRoutes.post("/access-requests/:id/:answer{allow|deny}", async (c) => {
   return c.json({ status: outcome });
 });
 
-type WorkspaceRole = "owner" | "admin" | "member";
+type WorkspaceRole = "owner" | "admin" | "member" | "project_member";
 
-/** The strongest of the comma-separated roles the library stores. */
+/** The strongest of the comma-separated roles the library stores. A project
+ *  member is named as one, so the app shows them only their projects; an older
+ *  app reads any other role as a member. */
 function strongestRole(value: string | null): WorkspaceRole {
+  if (confinedToProjects(value)) return "project_member";
   const roles = (value ?? "").split(",").map((role) => role.trim());
   return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : "member";
 }

@@ -1,4 +1,5 @@
 import { backendFetch } from "@/lib/backend-fetch";
+import { fetchMemberProjects } from "@/lib/project-access";
 
 /**
  * The organisation membership endpoints better-auth serves under /api/auth,
@@ -8,8 +9,8 @@ import { backendFetch } from "@/lib/backend-fetch";
  * load"; writes throw with the server's message so the dialog can show why.
  */
 
-export type MemberRole = "owner" | "admin" | "member";
-export const MEMBER_ROLES: readonly MemberRole[] = ["owner", "admin", "member"];
+export type MemberRole = "owner" | "admin" | "member" | "project_member";
+export const MEMBER_ROLES: readonly MemberRole[] = ["owner", "admin", "member", "project_member"];
 
 export interface TeamMember {
   readonly id: string;
@@ -47,16 +48,19 @@ export interface Team {
   readonly requests: readonly AccessRequest[];
   /** The signed-in person's role in this organisation; null when not a member. */
   readonly myRole: MemberRole | null;
+  /** Each project member's project ids (managers only; empty for everyone else). */
+  readonly memberProjects: Readonly<Record<string, readonly string[]>>;
 }
 
 const jsonHeaders = { "content-type": "application/json" } as const;
 
 export function memberRole(value: unknown): MemberRole {
   // better-auth stores comma-separated roles and grants the union of them, so the
-  // person's rank is the strongest role present.
+  // person's rank is the strongest role present. A project member holds no other role.
   const roles = typeof value === "string" ? value.split(",").map((r) => r.trim()) : [];
   if (roles.includes("owner")) return "owner";
   if (roles.includes("admin")) return "admin";
+  if (roles.includes("project_member") && !roles.includes("member")) return "project_member";
   return "member";
 }
 
@@ -145,6 +149,7 @@ export async function fetchTeam(input: { readonly userId: string | null }): Prom
     invitations,
     requests: await fetchAccessRequests(organizationId),
     myRole: mine?.role ?? null,
+    memberProjects: await fetchMemberProjects(),
   };
 }
 
@@ -189,15 +194,19 @@ export function canManageTeam(role: MemberRole | null): boolean {
 }
 
 /** A fresh invitation. When one is already pending for that email the server
- * says so, and the pending row offers resend or cancel. */
+ * says so, and the pending row offers resend or cancel. A project member is
+ * invited to the projects named here, and only to them. */
 export async function inviteMember(
   organizationId: string,
   email: string,
   role: MemberRole,
+  projectIds: readonly string[] = [],
 ): Promise<PendingInvitation> {
   const res = await post(
     "/api/auth/organization/invite-member",
-    { organizationId, email, role, resend: false },
+    role === "project_member"
+      ? { organizationId, email, role, projectIds, resend: false }
+      : { organizationId, email, role, resend: false },
     "Could not send the invitation.",
   );
   const body = (await res.json()) as {

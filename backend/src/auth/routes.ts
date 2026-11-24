@@ -1,6 +1,6 @@
 import { and, eq, gt, inArray } from "drizzle-orm";
 import { PROJECT_MEMBER_ROLE } from "../projects/access";
-import { grantInvitationProjects, orgProjectIds, recordInvitationProjects } from "../projects/members";
+import { grantInvitationProjects, invitationProjectNames, orgProjectIds, recordInvitationProjects } from "../projects/members";
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { INVITATION_EXPIRES_IN_SECONDS, NO_WAY_IN, canSignIn, deliverInvitation } from "../auth-invitations";
@@ -421,6 +421,8 @@ routes.get("/api/auth/invitation-preview", async (c) => {
     // Accepting also lets these Slack senders act as the recipient; the
     // acceptance must name the same ids, so nothing attached later is covered.
     slackSenders: await linkedSlackSenders(id),
+    // A project member's invitation names the projects it opens.
+    projects: await invitationProjectNames(id),
   });
 });
 /** Acceptance runs under the organisation's lock, the direct path, the library

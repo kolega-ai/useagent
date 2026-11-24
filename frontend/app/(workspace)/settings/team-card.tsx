@@ -10,7 +10,9 @@ import { Input } from "@/components/base/input/input";
 import * as Modal from "@/components/base/modal/modal";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { ROLE_LABEL, useAuthConfig, useSession } from "@/lib/auth";
+import { listWorkspaceProjects, pausedNotice, setMemberProjects, type WorkspaceProject } from "@/lib/project-access";
 import { AVATAR_GRADIENT } from "./general-card";
+import { MemberProjectsPicker, ProjectChecklist } from "./project-access-picker";
 import { relTime } from "./relative-time";
 import {
   type AccessRequest,
@@ -33,15 +35,19 @@ import {
 /**
  * Team section: the organisation's members and pending invitations from
  * better-auth's organization plugin. Owners and admins invite, change roles
- * and remove; members see the list. An invitation is always available as a
- * link, and goes out as an email when the deployment delivers mail.
+ * and remove; members see the list. A project member also has the projects
+ * they open, chosen when they are invited and changed on their row. An
+ * invitation is always available as a link, and goes out as an email when the
+ * deployment delivers mail.
  */
 
 const AVATAR_COLORS = ["neutral", "blue", "pink"] as const;
 
 /** Which roles the acting person may hand out: only an owner makes owners. */
 export function assignableRoles(myRole: MemberRole | null): readonly MemberRole[] {
-  return myRole === "owner" ? ["owner", "admin", "member"] : ["admin", "member"];
+  return myRole === "owner"
+    ? ["owner", "admin", "member", "project_member"]
+    : ["admin", "member", "project_member"];
 }
 
 /** Whether the acting person may change or remove this member. Nobody edits
@@ -67,7 +73,9 @@ export function TeamCard() {
   const [failed, setFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [projects, setProjects] = useState<readonly WorkspaceProject[]>([]);
 
   const me = session?.user.id ?? null;
 
@@ -88,11 +96,18 @@ export function TeamCard() {
   const myRole = team?.myRole ?? null;
   const manage = canManageTeam(myRole);
 
-  const act = async (key: string, work: () => Promise<void>) => {
+  useEffect(() => {
+    // The projects a project member can be given; only managers choose them.
+    if (manage) void listWorkspaceProjects().then(setProjects, () => setProjects([]));
+  }, [manage]);
+
+  const act = async (key: string, work: () => Promise<unknown>) => {
     setBusy(key);
     setError(null);
+    setNotice(null);
     try {
-      await work();
+      const said = await work();
+      if (typeof said === "string") setNotice(said);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -131,6 +146,11 @@ export function TeamCard() {
           {error}
         </p>
       )}
+      {notice && (
+        <p role="status" className="text-caption-1-regular text-text-secondary">
+          {notice}
+        </p>
+      )}
 
       <div className="flex flex-col">
         {team.members.map((row, index) => {
@@ -160,6 +180,17 @@ export function TeamCard() {
               </div>
               {editable ? (
                 <>
+                  {row.role === "project_member" ? (
+                    <MemberProjectsPicker
+                      name={row.name}
+                      projects={projects}
+                      chosen={team.memberProjects[row.userId] ?? []}
+                      disabled={busy !== null}
+                      onChange={(next) =>
+                        void act(row.id, async () => pausedNotice(await setMemberProjects(row.userId, next)))
+                      }
+                    />
+                  ) : null}
                   <Select
                     aria-label={`Role of ${row.name}`}
                     selectedKey={row.role}
@@ -243,6 +274,7 @@ export function TeamCard() {
           onOpenChange={setInviting}
           organizationId={team.organizationId}
           roles={assignableRoles(myRole)}
+          projects={projects}
           emailDelivery={config?.invitationEmail ?? null}
           onInvited={() => void load()}
         />
@@ -380,7 +412,7 @@ export function deliveryCopy(email: string, delivery: boolean | null): string {
   return `Invitation ready for ${email}. Share this link with them.`;
 }
 
-function CopyLinkButton({ href }: { href: string }) {
+export function CopyLinkButton({ href }: { href: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <Button
@@ -407,6 +439,7 @@ export function InviteDialog({
   onOpenChange,
   organizationId,
   roles,
+  projects = [],
   emailDelivery,
   onInvited,
 }: {
@@ -414,11 +447,14 @@ export function InviteDialog({
   onOpenChange: (open: boolean) => void;
   organizationId: string;
   roles: readonly MemberRole[];
+  /** The workspace's projects, for a project member's invitation. */
+  projects?: readonly WorkspaceProject[];
   emailDelivery: boolean | null;
   onInvited: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MemberRole>("member");
+  const [chosen, setChosen] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<PendingInvitation | null>(null);
@@ -427,6 +463,7 @@ export function InviteDialog({
     if (!next) {
       setEmail("");
       setRole("member");
+      setChosen([]);
       setError(null);
       setCreated(null);
     }
@@ -439,10 +476,14 @@ export function InviteDialog({
       setError("Enter an email address.");
       return;
     }
+    if (role === "project_member" && chosen.length === 0) {
+      setError("Choose at least one project for them.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      setCreated(await inviteMember(organizationId, address, role));
+      setCreated(await inviteMember(organizationId, address, role, chosen));
       onInvited();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send the invitation.");
@@ -500,9 +541,19 @@ export function InviteDialog({
                   ))}
                 </Select>
                 <p className="text-caption-1-regular text-text-tertiary">
-                  Admins manage people, secrets and machines. Members run work.
+                  Admins manage people, secrets and machines. Members run work. Project members
+                  work only in the projects you choose.
                 </p>
               </div>
+              {role === "project_member" ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-body-2-medium text-text-primary">Projects</span>
+                  <ProjectChecklist projects={projects} chosen={chosen} onChange={setChosen} />
+                  <p className="text-caption-1-regular text-text-tertiary">
+                    They see these projects only: their threads, automations and runs.
+                  </p>
+                </div>
+              ) : null}
             </>
           )}
         </Modal.Body>

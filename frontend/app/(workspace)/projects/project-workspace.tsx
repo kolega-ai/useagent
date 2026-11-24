@@ -43,8 +43,8 @@ export function ProjectRequestsPanel({ repository, requests, loading = false }: 
   </Section>;
 }
 
-export function ProjectWorkspace({ repository, data, requestsView }: {
-  repository: string; data: ProjectData; requestsView?: ReactNode;
+export function ProjectWorkspace({ repository, data, requestsView, peopleView }: {
+  repository: string; data: ProjectData; requestsView?: ReactNode; peopleView?: ReactNode;
 }) {
   const encoded = encodeURIComponent(repository);
   const automationHref = `/agent/automations?repo=${encoded}`;
@@ -90,6 +90,7 @@ export function ProjectWorkspace({ repository, data, requestsView }: {
           </Link>)}
       </Section>
       {requestsView ?? <ProjectRequestsPanel repository={repository} requests={data.requests} />}
+      {peopleView}
     </div>
   </div>;
 }

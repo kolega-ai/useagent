@@ -20,8 +20,15 @@ export interface Session {
   session: { activeOrganizationId?: string | null };
 }
 
-export type WorkspaceRole = "owner" | "admin" | "member";
-export const ROLE_LABEL: Record<WorkspaceRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
+/** A project member works only in the projects they were given (the backend's
+ *  request gate holds them there); every other role sees the whole workspace. */
+export type WorkspaceRole = "owner" | "admin" | "member" | "project_member";
+export const ROLE_LABEL: Record<WorkspaceRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+  project_member: "Project member",
+};
 
 export interface Workspace {
   id: string;
@@ -120,7 +127,10 @@ export async function listWorkspaces(
   return rows.map((row) => ({
     id: row.id as string,
     name: row.name as string,
-    role: row.role === "owner" || row.role === "admin" ? row.role : "member",
+    role:
+      row.role === "owner" || row.role === "admin" || row.role === "project_member"
+        ? row.role
+        : "member",
     active: row.id === data.activeOrganizationId,
     members: typeof row.members === "number" ? row.members : 0,
     defaultName: row.defaultName === true,

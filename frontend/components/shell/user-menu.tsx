@@ -131,6 +131,11 @@ export function sessionUserProfile(session: Session | null, loading: boolean): U
 
 export type WorkspaceEntry = Pick<Workspace, "id" | "name" | "role" | "active">;
 
+/** A project member opens only their projects: no workspace settings, apps or tour. */
+export function opensOnlyProjects(workspaces: readonly WorkspaceEntry[] | undefined): boolean {
+  return workspaces?.find((workspace) => workspace.active)?.role === "project_member";
+}
+
 /** The workspace the session is in first, the rest by name. */
 export function sortedWorkspaces(workspaces: readonly WorkspaceEntry[]): WorkspaceEntry[] {
   return workspaces.toSorted(
@@ -187,6 +192,7 @@ function UserMenuView({
   const { name, email, image } = profile;
   const initial = (name.charAt(0) || "?").toUpperCase();
   const triggerNode = typeof trigger === "function" ? trigger(profile) : trigger;
+  const projectsOnly = opensOnlyProjects(workspaces);
 
   async function handleSignOut() {
     if (signOutDisabled) return;
@@ -275,11 +281,13 @@ function UserMenuView({
             <span className="text-body-2-medium">Set up your workspace</span>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem id="settings" textValue="Settings" onAction={() => go("/settings")}>
-          <RiSettings3Line className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />
-          <span className="text-body-2-medium">Settings</span>
-        </DropdownMenuItem>
-        {onStartTour ? (
+        {projectsOnly ? null : (
+          <DropdownMenuItem id="settings" textValue="Settings" onAction={() => go("/settings")}>
+            <RiSettings3Line className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />
+            <span className="text-body-2-medium">Settings</span>
+          </DropdownMenuItem>
+        )}
+        {onStartTour && !projectsOnly ? (
           <DropdownMenuItem
             id="tour"
             textValue="Take the tour"
@@ -289,11 +297,13 @@ function UserMenuView({
             <span className="text-body-2-medium">Take the tour</span>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem id="apps" textValue="Apps" onAction={() => go("/apps")}>
-          <RiApps2Line className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-body-2-medium">Apps</span>
-          <Badge className="bg-badge-new-background text-badge-new-text">New</Badge>
-        </DropdownMenuItem>
+        {projectsOnly ? null : (
+          <DropdownMenuItem id="apps" textValue="Apps" onAction={() => go("/apps")}>
+            <RiApps2Line className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-body-2-medium">Apps</span>
+            <Badge className="bg-badge-new-background text-badge-new-text">New</Badge>
+          </DropdownMenuItem>
+        )}
         {showSignOut ? (
           <DropdownMenuItem
             id="sign-out"

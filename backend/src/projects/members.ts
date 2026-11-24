@@ -30,6 +30,15 @@ export async function recordInvitationProjects(invitationId: string, projectIds:
   await exec.insert(invitationProjects).values(projectIds.map((projectId) => ({ invitationId, projectId }))).onConflictDoNothing();
 }
 
+/** The names of the projects an invitation grants, for the person reading it. */
+export async function invitationProjectNames(invitationId: string): Promise<string[]> {
+  const rows = await db.select({ key: projects.key, displayName: projects.displayName, repo: projects.repoFullName })
+    .from(invitationProjects)
+    .innerJoin(projects, eq(projects.id, invitationProjects.projectId))
+    .where(eq(invitationProjects.invitationId, invitationId));
+  return rows.map((row) => row.displayName?.trim() || row.repo?.split("/").filter(Boolean).at(-1) || row.key).sort();
+}
+
 /** Accepting a project-member invitation grants the projects it names. */
 export async function grantInvitationProjects(
   orgId: string,

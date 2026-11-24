@@ -21,7 +21,7 @@ describe("invitation problems in plain words", () => {
   });
 });
 
-import { slackSendersNotice } from "./accept-invitation";
+import { invitedAs, slackSendersNotice } from "./accept-invitation";
 
 test("the accept page says plainly which Slack identities joining would authorise", () => {
   expect(slackSendersNotice(undefined)).toBeNull();
@@ -35,4 +35,17 @@ test("the accept page says plainly which Slack identities joining would authoris
       { id: "r2", name: "B", teamId: "T2" },
     ]),
   ).toContain("these people");
+});
+
+describe("the role an invitation names", () => {
+  test("a project member's invitation names the projects it opens", () => {
+    expect(invitedAs({ role: "project_member", projects: ["billing"] })).toBe("a project member of billing");
+    expect(invitedAs({ role: "project_member", projects: ["api", "billing", "web"] })).toBe("a project member of api, billing and web");
+    expect(invitedAs({ role: "project_member" })).toBe("a project member");
+  });
+
+  test("every other role keeps its words, and anything unknown is a member", () => {
+    expect([invitedAs({ role: "admin" }), invitedAs({ role: "owner" }), invitedAs({ role: "member" }), invitedAs({ role: "x" })])
+      .toEqual(["an admin", "an owner", "a member", "a member"]);
+  });
 });
