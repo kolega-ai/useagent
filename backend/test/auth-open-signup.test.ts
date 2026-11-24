@@ -123,9 +123,10 @@ async function organisation(label: string): Promise<{ orgId: string; inviterId: 
   await db.insert(member).values({ id: `member_${crypto.randomUUID()}`, organizationId: orgId, userId: inviterId, role: "owner", createdAt: new Date() });
   return { orgId, inviterId };
 }
-async function invite(orgId: string, inviterId: string, email: string): Promise<void> {
+async function invite(orgId: string, inviterId: string, email: string): Promise<string> {
+  const id = `inv_${crypto.randomUUID()}`;
   await db.insert(invitation).values({
-    id: `inv_${crypto.randomUUID()}`,
+    id,
     organizationId: orgId,
     email,
     role: "member",
@@ -133,6 +134,7 @@ async function invite(orgId: string, inviterId: string, email: string): Promise<
     expiresAt: new Date(Date.now() + 86_400_000),
     inviterId,
   });
+  return id;
 }
 /** An admin lets a Slack sender with this address into the organisation. The
  *  Slack transport is a recording stub: nothing reaches Slack. */
@@ -196,6 +198,42 @@ describe("open sign-up", () => {
     await invite(orgId, inviterId, email);
     expect((await signUp(email, { inviteCode: "" })).status).toBe(200);
     expect(await row(email)).toMatchObject({ emailVerified: false });
+  });
+
+  test("an invited sign-up gets no workspace of its own and signs in straight into its invitation", async () => {
+    const { orgId, inviterId } = await organisation("invited-lands");
+    const email = address("invited-lands", "other.test");
+    const invitationId = await invite(orgId, inviterId, email);
+    expect((await signUp(email, { inviteCode: "" })).status).toBe(200);
+    const pending = await row(email);
+    const confirmed = await openLink(email, pending!.id);
+    expect(landing(confirmed)).toBe(
+      `${env.FRONTEND_ORIGIN}/login?verified=1&redirect_url=${encodeURIComponent(`/accept-invitation/${invitationId}`)}`,
+    );
+    expect(await row(email)).toMatchObject({ emailVerified: true });
+    expect(await memberships(pending!.id)).toEqual([]); // no personal workspace
+    expect(landing(await openLink(email, pending!.id))).toContain("redirect_url="); // a second click, the same
+    expect(await memberships(pending!.id)).toEqual([]);
+    expect((await signIn(email)).status).toBe(200);
+  });
+
+  test("invitations-only: the card hears so, a stranger is refused, an invited address signs up", async () => {
+    const before = process.env.SIGNUP_OPEN;
+    process.env.SIGNUP_OPEN = "invitations";
+    try {
+      const config = await (await handleAuthRequest(new Request(`${BASE}/api/auth/provider-config`))).json();
+      expect(config.signup).toEqual({ inviteCode: false, domains: [], invitationsOnly: true });
+      const stranger = await signUp(address("only-stranger"), {}, own(41)); // right domain, right code
+      expect(stranger.status).toBe(403);
+      expect(await stranger.json()).toMatchObject({ message: "Sign-up is by invitation only. Ask a workspace admin to invite this address." });
+      expect(await row(address("only-stranger"))).toBeUndefined();
+      const { orgId, inviterId } = await organisation("only-invited");
+      const email = address("only-invited", "other.test");
+      await invite(orgId, inviterId, email);
+      expect((await signUp(email, { inviteCode: "" }, own(42))).status).toBe(200);
+    } finally {
+      process.env.SIGNUP_OPEN = before;
+    }
   });
 
   test("a sign-up waits for its mail: no session, no organisation, no sign-in until the link is opened", async () => {
@@ -348,7 +386,8 @@ describe("open sign-up", () => {
     });
     expect(await row(closedEmail)).toMatchObject({ id: closedClaim!.id, emailVerified: true });
     expect((await accounts(closedClaim!.id)).map((linkedAccount) => linkedAccount.providerId)).toEqual(["google"]);
-    expect(await memberships(closedClaim!.id)).toHaveLength(1);
+    // Invited: no workspace of their own; they join the inviting one by accepting.
+    expect(await memberships(closedClaim!.id)).toEqual([]);
   });
 
   test("a Google sign-in racing the confirmation click ends with one personal workspace and no hang", async () => {

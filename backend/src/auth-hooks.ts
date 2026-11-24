@@ -1,4 +1,5 @@
 import { and, eq, notExists } from "drizzle-orm";
+import { pendingInvitationFor } from "./auth-invitations";
 import { account, session, user } from "./db/auth-schema";
 import { db, type Executor } from "./db/client";
 import { member, organization } from "./db/schema";
@@ -54,7 +55,8 @@ export async function createPersonalOrgForUser(user: {
  *  two paths cannot both find none, and none waits on anything but that row,
  *  so there is nothing to deadlock on. Given a transaction (confirmation holds
  *  the row already), it rides in it; otherwise it opens one. A person who
- *  already belongs somewhere keeps what they have. */
+ *  already belongs somewhere keeps what they have, and an address a pending
+ *  invitation names gets none: it joins the workspace that invited it. */
 export async function ensurePersonalOrgForUser(
   person: { id: string; name?: string | null; email: string },
   exec: Executor = db,
@@ -63,7 +65,9 @@ export async function ensurePersonalOrgForUser(
     const [locked] = await tx.select({ id: user.id }).from(user).where(eq(user.id, person.id)).for("update");
     if (!locked) return; // gone in between: nobody to give a workspace to
     const [membership] = await tx.select({ id: member.id }).from(member).where(eq(member.userId, person.id)).limit(1);
-    if (!membership) await createPersonalOrgForUser(person, tx);
+    if (membership) return;
+    if (await pendingInvitationFor(person.email, tx)) return;
+    await createPersonalOrgForUser(person, tx);
   };
   if (exec === db) await db.transaction(decide);
   else await decide(exec);

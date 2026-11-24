@@ -63,18 +63,23 @@ export interface OpenSignupConfig {
   readonly domains: readonly string[];
   /** A shared code typed on the sign-up card; empty means none is asked for. */
   readonly inviteCode: string;
+  /** `SIGNUP_OPEN=invitations`: only an address a pending invitation names may
+   *  sign up, so the card offers sign-up only to someone arriving from their
+   *  invitation; the domain list and the code do not apply. */
+  readonly invitationsOnly: boolean;
 }
 
 export function signupSwitchOn(source: Record<string, string | undefined> = process.env): boolean {
   const value = source.SIGNUP_OPEN?.trim();
-  return value === "1" || value === "true";
+  return value === "1" || value === "true" || value === "invitations";
 }
 
 /**
  * Open sign-up: `SIGNUP_OPEN=1` lets anyone create an account with an email
  * address and a password, in any environment, narrowed by
- * `SIGNUP_ALLOWED_DOMAINS` (a comma list) and `SIGNUP_INVITE_CODE`. Unset is the
- * closed deployment. The switch needs the account mail transport
+ * `SIGNUP_ALLOWED_DOMAINS` (a comma list) and `SIGNUP_INVITE_CODE`.
+ * `SIGNUP_OPEN=invitations` admits only an address a pending invitation names.
+ * Unset is the closed deployment. The switch needs the account mail transport
  * ({@link invitationMailConfig}): an address is verified by mail before its
  * first sign-in, and without mail the switch stays inert, because an invite
  * code proves possession of the code, not of the address.
@@ -89,8 +94,11 @@ export function openSignupConfig(
       .map((domain) => domain.trim().toLowerCase().replace(/^@/, ""))
       .filter(Boolean),
     inviteCode: source.SIGNUP_INVITE_CODE?.trim() ?? "",
+    invitationsOnly: source.SIGNUP_OPEN?.trim() === "invitations",
   };
 }
+
+export const INVITATIONS_ONLY_MESSAGE = "Sign-up is by invitation only. Ask a workspace admin to invite this address.";
 
 export const SIGNUP_DISABLED_MESSAGE = "Account creation is disabled";
 
@@ -115,6 +123,7 @@ export function signupRefusal(
   const open = openSignupConfig(source);
   if (!open) return selfSignupEnabled(source) ? null : SIGNUP_DISABLED_MESSAGE;
   if (invited) return null;
+  if (open.invitationsOnly) return INVITATIONS_ONLY_MESSAGE;
   const domain = email.trim().toLowerCase().split("@")[1] ?? "";
   if (open.domains.length && !open.domains.includes(domain)) {
     return `Sign-up is limited to ${open.domains.map((name) => `@${name}`).join(", ")} addresses`;

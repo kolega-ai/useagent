@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { betterAuthTrustedOrigins, openSignupConfig, sameSecret, selfSignupEnabled, signupRefusal } from "../src/env";
+import {
+  betterAuthTrustedOrigins,
+  INVITATIONS_ONLY_MESSAGE,
+  openSignupConfig,
+  sameSecret,
+  selfSignupEnabled,
+  signupRefusal,
+} from "../src/env";
 
 describe("self-service signup policy", () => {
   test("is disabled in production even when no signup-specific flag exists", () => {
@@ -21,7 +28,7 @@ describe("open sign-up policy", () => {
   test("the switch needs the mail transport, then opens sign-up even in production", () => {
     expect(openSignupConfig({ SIGNUP_OPEN: "1" })).toBeNull();
     expect(openSignupConfig({ ...MAIL })).toBeNull();
-    expect(openSignupConfig({ SIGNUP_OPEN: "1", ...MAIL })).toEqual({ domains: [], inviteCode: "" });
+    expect(openSignupConfig({ SIGNUP_OPEN: "1", ...MAIL })).toEqual({ domains: [], inviteCode: "", invitationsOnly: false });
     expect(selfSignupEnabled({ NODE_ENV: "production", SIGNUP_OPEN: "1", ...MAIL })).toBe(true);
     expect(selfSignupEnabled({ NODE_ENV: "production", SIGNUP_OPEN: "1" })).toBe(false);
     expect(selfSignupEnabled({ NODE_ENV: "production", SIGNUP_OPEN: "0", ...MAIL })).toBe(false);
@@ -52,6 +59,17 @@ describe("open sign-up policy", () => {
     expect(signupRefusal("guest@other.test", undefined, source, true)).toBeNull();
     expect(signupRefusal("guest@other.test", undefined, source, false)).toBe("Sign-up is limited to @acme.com addresses");
     expect(signupRefusal("guest@other.test", undefined, { NODE_ENV: "production" }, true)).toBe("Account creation is disabled");
+  });
+
+  test("invitations-only admits an invited address and nobody else, whatever the domain or code", () => {
+    const source = { SIGNUP_OPEN: "invitations", ...MAIL, SIGNUP_ALLOWED_DOMAINS: "acme.com", SIGNUP_INVITE_CODE: "feedback-2026" };
+    expect(openSignupConfig(source)).toMatchObject({ invitationsOnly: true });
+    expect(openSignupConfig({ SIGNUP_OPEN: "invitations" })).toBeNull(); // still needs the mail transport
+    expect(selfSignupEnabled({ NODE_ENV: "production", ...source })).toBe(true); // invitations can be used
+    expect(signupRefusal("guest@other.test", undefined, source, true)).toBeNull();
+    expect(signupRefusal("dana@acme.com", "feedback-2026", source)).toBe(INVITATIONS_ONLY_MESSAGE);
+    expect(signupRefusal("guest@other.test", undefined, source)).toBe(INVITATIONS_ONLY_MESSAGE);
+    expect(INVITATIONS_ONLY_MESSAGE).not.toContain("\u2014");
   });
 
   test("secrets compare in constant time whatever their lengths", () => {

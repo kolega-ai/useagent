@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { and, eq, gt, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
 import { sendSmtp } from "./connectors/email/smtp";
 import { db, type Executor } from "./db/client";
 import { account, invitation, user } from "./db/auth-schema";
@@ -16,12 +16,12 @@ import { env, googleAuthEnabled, type InvitationMailConfig, invitationMailConfig
 /** Seven days, in the seconds better-auth's organization plugin expects. */
 export const INVITATION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 
-/** A pending, unexpired invitation for this email lets the account be created. */
-export async function invitedSignupAllowed(
+/** The newest pending, unexpired invitation naming this email, or null. */
+export async function pendingInvitationFor(
   email: string,
   exec: Executor = db,
   now: Date = new Date(),
-): Promise<boolean> {
+): Promise<string | null> {
   const [row] = await exec
     .select({ id: invitation.id })
     .from(invitation)
@@ -32,8 +32,18 @@ export async function invitedSignupAllowed(
         gt(invitation.expiresAt, now),
       ),
     )
+    .orderBy(desc(invitation.createdAt), desc(invitation.id))
     .limit(1);
-  return row !== undefined;
+  return row?.id ?? null;
+}
+
+/** A pending, unexpired invitation for this email lets the account be created. */
+export async function invitedSignupAllowed(
+  email: string,
+  exec: Executor = db,
+  now: Date = new Date(),
+): Promise<boolean> {
+  return (await pendingInvitationFor(email, exec, now)) !== null;
 }
 
 /** Where an invitation is accepted: the accept page lives on the frontend. */

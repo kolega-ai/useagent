@@ -36,6 +36,12 @@ use): a new account is confirmed through a mailed link before its first
 sign-in, and without mail the switch stays inert with a warning at boot,
 because an invite code proves possession of the code, not of the address.
 
+`SIGNUP_OPEN=invitations` admits only addresses a pending invitation names. The
+sign-in card then offers no public sign-up link: someone arriving from their
+invitation is offered sign-up, with no code or domain rule. An invited address
+gets no workspace of its own. After confirming, it signs in straight into its
+invitation and joins the workspace that invited it.
+
 An account that never confirmed its address, belongs to no organisation and
 never signed in is a claim on the address, not a person. The next accepted
 sign-up for that address replaces it and mails a fresh link; the newest link

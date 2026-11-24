@@ -39,8 +39,13 @@ routes.get("/api/auth/provider-config", (c) => {
     allowDevOrg: allowDevOrg(),
     invitationEmail: invitationMailEnabled(),
     // Open sign-up: whether the card offers it, asks for an invite code, and
-    // which domains it admits. The code itself never leaves the server.
-    signup: open ? { inviteCode: open.inviteCode !== "", domains: open.domains } : null,
+    // which domains it admits, or that only invited addresses may sign up (no
+    // code or domain then applies). The code itself never leaves the server.
+    signup: open
+      ? open.invitationsOnly
+        ? { inviteCode: false, domains: [], invitationsOnly: true }
+        : { inviteCode: open.inviteCode !== "", domains: open.domains, invitationsOnly: false }
+      : null,
   });
 });
 routes.on("GET", ["/api/auth/get-session", "/api/auth/list-sessions"], async (c) =>
