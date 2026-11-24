@@ -13,7 +13,7 @@ import { getScheduleForOrg, listEnabledSchedules } from "../src/schedules/repo";
 import { tick } from "../src/schedules/scheduler";
 import { fireScheduleForOrg } from "../src/schedules/service";
 import { AUTOMATION_RUN_ORIGIN } from "../src/runs/origin";
-import { createOrgSession, fetchApi, json, waitFor } from "./helpers";
+import { createOrgSession, fetchApi, inTestProject, json, waitFor } from "./helpers";
 
 const previousFlag = process.env.BOTS;
 beforeAll(() => {
@@ -57,7 +57,7 @@ describe("bot routines", () => {
     const created = await json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, {
       method: "POST",
       cookies,
-      body: { name: "Weekly metrics", cron: "0 7 * * 1", prompt: "Build the weekly metrics workbook." },
+      body: await inTestProject(cookies, { name: "Weekly metrics", cron: "0 7 * * 1", prompt: "Build the weekly metrics workbook." }),
     });
     expect(created.status).toBe(201);
     expect(created.body.routine.enabled).toBe(true);
@@ -118,7 +118,7 @@ describe("bot routines", () => {
     const created = await json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, {
       method: "POST",
       cookies,
-      body: { name: "Every minute", cron: "* * * * *", prompt: "Check the queue." },
+      body: await inTestProject(cookies, { name: "Every minute", cron: "* * * * *", prompt: "Check the queue." }),
     });
     expect(created.status).toBe(201);
     const record = (await listEnabledSchedules()).find((s) => s.id === created.body.routine.id);
@@ -151,7 +151,7 @@ describe("bot routines", () => {
     const created = await json<{ routine: RoutineBody }>(`/api/bots/${a.id}/routines`, {
       method: "POST",
       cookies,
-      body: { name: "Nightly audit", cron: "0 2 * * *", prompt: "Audit dependencies." },
+      body: await inTestProject(cookies, { name: "Nightly audit", cron: "0 2 * * *", prompt: "Audit dependencies." }),
     });
     expect(created.status).toBe(201);
     const crossBot = await fetchApi(`/api/bots/${b.id}/routines/${created.body.routine.id}/run-now`, { method: "POST", cookies });
@@ -163,8 +163,8 @@ describe("bot routines", () => {
   test("a routine runs in the zone it was saved with, UTC when none was given, and lists the minute it fires next", async () => {
     const { cookies } = await createOrgSession("bot-routines-zone");
     const bot = await createBot(cookies, "Clockwork");
-    const create = (body: Record<string, unknown>) =>
-      json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, { method: "POST", cookies, body });
+    const create = async (body: Record<string, unknown>) =>
+      json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, { method: "POST", cookies, body: await inTestProject(cookies, body) });
     const zoned = await create({ name: "Island digest", cron: "45 1 * * *", timezone: "Australia/Lord_Howe", prompt: "Digest." });
     const unzoned = await create({ name: "Plain digest", cron: "0 9 * * *", prompt: "Digest." });
     try {
@@ -203,7 +203,7 @@ describe("bot routines", () => {
     const created = await json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, {
       method: "POST",
       cookies,
-      body: { name: "Recover report", cron: "0 8 * * *", prompt: "Build the recovery report." },
+      body: await inTestProject(cookies, { name: "Recover report", cron: "0 8 * * *", prompt: "Build the recovery report." }),
     });
     expect(created.status).toBe(201);
     const schedule = await getScheduleForOrg(orgId, created.body.routine.id);
@@ -314,7 +314,7 @@ describe("bot routines", () => {
     const created = await json<{ routine: RoutineBody }>(`/api/bots/${bot.id}/routines`, {
       method: "POST",
       cookies,
-      body: { name: "Tick", cron: "* * * * *", prompt: "Say tock." },
+      body: await inTestProject(cookies, { name: "Tick", cron: "* * * * *", prompt: "Say tock." }),
     });
     expect(created.status).toBe(201);
     const observed = new Map<string, Promise<string | null>>();

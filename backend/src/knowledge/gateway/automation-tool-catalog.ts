@@ -60,6 +60,11 @@ export const AUTOMATION_TOOLS = [
           description: "Optional validated repository refs for the scheduled run.",
           items: { type: "string" },
         },
+        project: {
+          type: "string",
+          description:
+            "Optional repository of the project the automation belongs to (owner/name, or gitlab.com/group/name). Omit to use this run's project.",
+        },
         tags: { type: "array", items: { type: "string" } },
         delivery: { type: ["object", "null"], additionalProperties: true },
         notifications: { type: ["object", "null"], additionalProperties: true },
@@ -177,6 +182,7 @@ export const AUTOMATION_CONTRACT = {
       "model",
       "skill",
       "repos",
+      "project",
       "tags",
       "delivery",
       "notifications",

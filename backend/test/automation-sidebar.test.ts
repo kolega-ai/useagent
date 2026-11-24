@@ -4,14 +4,14 @@ import { db } from "../src/db/client";
 import { runs, scheduleFirings } from "../src/db/schema";
 import { AUTOMATION_RUN_ORIGIN } from "../src/runs/origin";
 import type { ApiSchedule } from "../src/schedules/repo";
-import { createOrgSession, json } from "./helpers";
+import { createOrgSession, inTestProject, json } from "./helpers";
 
 test("automation list exposes bounded live runs without crossing organizations or exposing internal runs", async () => {
   const owner = await createOrgSession("automation-rail");
   const other = await createOrgSession("automation-rail-other");
   const created = await json<ApiSchedule>("/api/automations", {
     method: "POST", cookies: owner.cookies,
-    body: { name: "Catalog refresh", cron: "0 9 * * *", prompt: "Refresh", engine: "mock" },
+    body: await inTestProject(owner.cookies, { name: "Catalog refresh", cron: "0 9 * * *", prompt: "Refresh", engine: "mock" }),
   });
   expect(created.status).toBe(201);
   const id = created.body.id;

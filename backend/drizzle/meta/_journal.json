@@ -820,6 +820,13 @@
       "when": 1792800000032,
       "tag": "0122_workspace_files",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1792800000033,
+      "tag": "0123_automation_projects",
+      "breakpoints": true
     }
   ]
 }

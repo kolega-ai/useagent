@@ -248,3 +248,23 @@ export async function waitFor<T>(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
+
+/** A project of the session's workspace, with no repository, for automations
+ *  to belong to (every saved automation has one). Made through the projects
+ *  API once per session and key. */
+const sessionProjects = new Map<string, string>();
+export async function testProjectId(cookies: string, key = "test-project"): Promise<string> {
+  const known = sessionProjects.get(`${cookies}\n${key}`);
+  if (known) return known;
+  const res = await json<{ id: string }>("/api/projects", { method: "POST", body: { key }, cookies });
+  if (res.status !== 201) throw new Error(`test project could not be made: ${res.status}`);
+  sessionProjects.set(`${cookies}\n${key}`, res.body.id);
+  return res.body.id;
+}
+
+/** An automation create body placed in the session's test project, unless it
+ *  names its own project or repository. */
+export async function inTestProject(cookies: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const placed = ["project", "projectId", "repos", "codePolicy"].some((field) => body[field] !== undefined);
+  return placed ? body : { projectId: await testProjectId(cookies), ...body };
+}

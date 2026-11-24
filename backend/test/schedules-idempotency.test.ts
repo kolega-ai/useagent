@@ -7,7 +7,7 @@ import { cronMatches, nextOccurrence } from "../src/schedules/cron";
 import { fireSchedule, firingKey } from "../src/schedules/fire";
 import { getScheduleForOrg } from "../src/schedules/repo";
 import { fireScheduleForOrg } from "../src/schedules/service";
-import { createOrgSession, json } from "./helpers";
+import { createOrgSession, inTestProject, json, testProjectId } from "./helpers";
 
 /** Create a disabled schedule and return its raw DB record (fireSchedule input). */
 async function makeScheduleRecord(label: string) {
@@ -15,7 +15,7 @@ async function makeScheduleRecord(label: string) {
   const created = await json<{ id: string }>("/api/schedules", {
     method: "POST",
     cookies: s.cookies,
-    body: { name: label, cron: "0 2 * * *", prompt: `prompt ${label}`, engine: "mock" },
+    body: await inTestProject(s.cookies, { name: label, cron: "0 2 * * *", prompt: `prompt ${label}`, engine: "mock" }),
   });
   expect(created.status).toBe(201);
   const rec = await getScheduleForOrg(s.orgId, created.body.id);
@@ -180,6 +180,7 @@ describe("timezone on the schedules API", () => {
       method: "POST",
       cookies: s.cookies,
       body: {
+        projectId: await testProjectId(s.cookies),
         name: "TZ schedule",
         cron: "0 9 * * *",
         prompt: "morning digest",
@@ -204,7 +205,7 @@ describe("timezone on the schedules API", () => {
       const noneTz = await json<any>("/api/schedules", {
         method: "POST",
         cookies: s.cookies,
-        body: { name: "no tz", cron: "0 9 * * *", prompt: "x", timezone },
+        body: await inTestProject(s.cookies, { name: "no tz", cron: "0 9 * * *", prompt: "x", timezone }),
       });
       expect(noneTz.status).toBe(201);
       expect(noneTz.body.timezone).toBe("UTC");

@@ -6,7 +6,9 @@ import {
   listFirings,
   listSchedules,
 } from "./repo";
+import { findOrgProject } from "./project";
 import {
+  automationAccessFor,
   createScheduleForOrg,
   deleteScheduleForOrg,
   previewNextRuns,
@@ -21,10 +23,17 @@ export const schedulesRoutes = new Hono<AppEnv>();
 
 schedulesRoutes.use("*", orgScope);
 
-// List all automations for the active org (newest first). The `schedules`
-// envelope is retained for backward-compatible clients and resumed sessions.
+// List the active org's automations (newest first), or one project's with
+// `?project=<id or repository>`, each with what the viewer may do to it. The
+// `schedules` envelope is retained for backward-compatible clients and resumed
+// sessions.
 schedulesRoutes.get("/", async (c) => {
-  const automations = await listSchedules(c.get("orgId"));
+  const orgId = c.get("orgId");
+  const projectRef = c.req.query("project")?.trim();
+  const project = projectRef ? await findOrgProject(orgId, projectRef) : null;
+  const listed = projectRef && !project ? [] : await listSchedules(orgId, project ? { projectId: project.id } : {});
+  const access = await automationAccessFor(orgId, c.get("userId") ?? null, listed);
+  const automations = listed.map((automation) => ({ ...automation, access: access.get(automation.id) }));
   return c.json({ automations, schedules: automations });
 });
 

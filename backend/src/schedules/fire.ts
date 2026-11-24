@@ -239,6 +239,8 @@ export async function fireScheduleWithOutcome(
         threadId,
         repos: [...intake.repos],
         workspaceFileSelection: schedule.workspaceFileSelection ?? [],
+        // The automation's project, whether or not it works in a repository.
+        projectId: schedule.projectId,
         resolvedResources: intake.resources,
         ...(automationPermission ? { permissionMode: automationPermission } : {}),
         // Plain scheduled runs are fresh roots with organization memory; a bot
