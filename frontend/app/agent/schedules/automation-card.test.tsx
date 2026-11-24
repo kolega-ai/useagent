@@ -77,3 +77,29 @@ test("creation does not duplicate a schedule already received in a change notifi
   expect(addCreatedAutomation([created, other], created)).toEqual([created, other]);
   expect(addCreatedAutomation([other], created)).toEqual([created, other]);
 });
+
+test("someone else's automation shows why it is locked and offers no Run now", () => {
+  const renderWith = (access: ScheduleRecord["access"]) =>
+    renderToStaticMarkup(
+      <AutomationCard
+        schedule={schedule()}
+        access={access}
+        running={false}
+        mutating={false}
+        onToggle={() => {}}
+        onRunNow={() => {}}
+        onHistory={() => {}}
+        onEdit={() => {}}
+        onDelete={async () => {}}
+      />,
+    );
+  const reason = "Runs as Dana Lee. Only they can change it or run it now.";
+  const locked = renderWith({ change: false, stop: false, reason });
+  expect(locked).toContain(reason);
+  expect(locked).not.toContain("Run Nightly digest now");
+  // An enabled automation pauses only with stop rights: the switch is disabled here.
+  expect(locked).toMatch(/aria-label="Nightly digest active"[^>]*disabled|disabled[^>]*aria-label="Nightly digest active"/);
+  const own = renderWith(undefined);
+  expect(own).toContain("Run Nightly digest now");
+  expect(own).not.toContain("Only they can change it");
+});

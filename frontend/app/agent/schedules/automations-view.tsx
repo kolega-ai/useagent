@@ -4,6 +4,7 @@ import {
   RiAddLine,
   RiCalendarScheduleLine,
   RiErrorWarningLine,
+  RiFolderLine,
   RiSearch2Line,
 } from "@remixicon/react";
 import {
@@ -38,7 +39,8 @@ import {
   updateSchedule,
   type CreateScheduleInput,
 } from "./schedules-api";
-import { addCreatedAutomation, lastRunAt, type ScheduleRecord } from "./schedules-data";
+import { addCreatedAutomation, automationGroupKey, groupAutomationsByProject, lastRunAt, type ScheduleRecord } from "./schedules-data";
+import { Select, SelectItem } from "@/components/base/select/select";
 import { useAutomationRecovery } from "./use-automation-recovery";
 
 type Filter = "all" | "active" | "paused";
@@ -64,11 +66,14 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ScheduleRecord | null>(null);
   const [historyFor, setHistoryFor] = useState<ScheduleRecord | null>(null);
+  const [projectFilter, setProjectFilter] = useState("all");
+  // The project a new automation opens in: the page's, or a group's "New".
+  const [editorRepository, setEditorRepository] = useState<string | null>(repository);
   const [running, setRunning] = useState<Set<string>>(() => new Set());
   const [mutating, setMutating] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    if (createOnLoad && repository) { setEditing(null); setEditorOpen(true); }
+    if (createOnLoad && repository) { setEditing(null); setEditorRepository(repository); setEditorOpen(true); }
   }, [createOnLoad, repository]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -108,6 +113,10 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
       return matchesStatus && matchesQuery;
     });
   }, [scoped, filter, query]);
+
+  const projectOptions = useMemo(() => groupAutomationsByProject(scoped), [scoped]);
+  const groups = useMemo(() => groupAutomationsByProject(filtered.filter((automation) =>
+    projectFilter === "all" || automationGroupKey(automation) === projectFilter)), [filtered, projectFilter]);
 
   const activeCount = scoped.filter((automation) => automation.enabled).length;
   const latestActivity = scoped
@@ -178,8 +187,9 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
     }
   };
 
-  const openCreate = () => {
+  const openCreate = (projectRepository: string | null = repository) => {
     setEditing(null);
+    setEditorRepository(projectRepository);
     setEditorOpen(true);
   };
 
@@ -196,7 +206,7 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
               "Schedule repeatable work, inspect every execution, and intervene when needed."}
           </p>
         </div>
-        <Button variant="primary" leadingIcon={RiAddLine} onClick={openCreate}>
+        <Button variant="primary" leadingIcon={RiAddLine} onClick={() => openCreate()}>
           New automation
         </Button>
       </div>
@@ -221,6 +231,13 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
             <SegmentedControlItem id="active">Active</SegmentedControlItem>
             <SegmentedControlItem id="paused">Paused</SegmentedControlItem>
           </SegmentedControl>
+          {projectOptions.length > 1 ? (
+            <Select aria-label="Project" size="sm" className="sm:mr-auto" selectedKey={projectFilter} onSelectionChange={(key) => setProjectFilter(String(key))}>
+              {[{ key: "all", label: "All projects" }, ...projectOptions].map((option) => (
+                <SelectItem key={option.key} id={option.key} textValue={option.label}>{option.label}</SelectItem>
+              ))}
+            </Select>
+          ) : null}
           <Input
             aria-label="Search automations"
             placeholder="Search automations"
@@ -264,12 +281,32 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyAutomations filtered={scoped.length > 0} onCreate={openCreate} />
+          <EmptyAutomations filtered={scoped.length > 0} onCreate={() => openCreate()} />
         ) : (
           <div>
-            {filtered.map((automation) => (
+            {groups.map((group) => (
+              <div key={group.key}>
+                <div className="flex items-center gap-2 border-b border-border-button-default bg-background-secondary-default/50 px-4 py-2 sm:px-5">
+                  <RiFolderLine className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+                  <span className="text-body-2-medium text-text-primary">{group.label}</span>
+                  {group.repo && group.repo !== group.label ? <span className="truncate text-caption-1-regular text-text-tertiary">{group.repo}</span> : null}
+                  <span className="text-caption-1-medium tabular-nums text-text-tertiary">{group.automations.length}</span>
+                  {group.repo ? (
+                    <button
+                      type="button"
+                      onClick={() => openCreate(group.repo)}
+                      aria-label={`New automation in ${group.label}`}
+                      className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-caption-1-medium text-text-secondary transition-colors hover:bg-background-secondary-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+                    >
+                      <RiAddLine className="size-3.5" aria-hidden />
+                      New
+                    </button>
+                  ) : null}
+                </div>
+                {group.automations.map((automation) => (
               <AutomationCard
                 key={automation.id}
+                access={automation.access}
                 schedule={automation}
                 running={running.has(automation.id)}
                 mutating={mutating.has(automation.id)}
@@ -282,6 +319,8 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
                 }}
                 onDelete={removeAutomation}
               />
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -290,7 +329,7 @@ export function AutomationsView({ repository = null, createOnLoad = false }: {
       <AutomationEditorModal
         open={editorOpen}
         schedule={editing}
-        initialRepository={repository}
+        initialRepository={editorRepository}
         onClose={() => setEditorOpen(false)}
         onSave={saveAutomation}
       />

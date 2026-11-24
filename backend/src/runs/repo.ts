@@ -37,7 +37,7 @@ import { sidebarNativeChildren } from "./native-children-projection";
 import { executionGraphEnabled } from "./execution-graph-switch";
 import { parseRepoRef } from "../github/repo-ref";
 import type { RunResource } from "../resources/types";
-import { ensureProject, getProjectForOrg } from "../projects/repo";
+import { resolveRunProject } from "../projects/repo";
 import { selectThreadWorkspaceFiles } from "../workspace-files/store";
 import { listUploadsForRuns, type RunUploadDescriptor } from "../uploads/repo";
 import { publicRunCondition } from "./visibility";
@@ -263,23 +263,9 @@ export async function createRun(
     .where(and(eq(runs.threadId, input.threadId), eq(runs.id, input.threadId),
       input.orgId === null ? isNull(runs.orgId) : eq(runs.orgId, input.orgId)))
     .limit(1);
-  // A thread belongs to one project: a new thread takes the one its caller
-  // decided (an automation's) or its repository's, and every reply its root's.
   const primaryRepo = input.repos?.[0] ? parseRepoRef(input.repos[0]).repo : null;
-  const decided = input.id === input.threadId && input.orgId && input.projectId
-    ? await getProjectForOrg(input.orgId, input.projectId, exec)
-    : null;
-  const project =
-    decided ??
-    (input.orgId && primaryRepo && (input.id === input.threadId || !root?.projectId)
-      ? await ensureProject(
-          input.orgId,
-          primaryRepo,
-          { repoFullName: primaryRepo },
-          exec,
-        )
-      : null);
-  const projectId = input.id === input.threadId ? project?.id ?? null : root?.projectId ?? project?.id ?? null;
+  const { project, projectId } = await resolveRunProject({ orgId: input.orgId, newThread: input.id === input.threadId,
+    decidedProjectId: input.projectId ?? null, primaryRepo, threadProjectId: root?.projectId ?? null }, exec);
   const repositorySnapshot = input.id === input.threadId ? project?.daytonaSnapshot ?? null : root?.repositorySnapshot ?? null;
   const workspaceFiles = input.id === input.threadId
     ? input.orgId ? await selectThreadWorkspaceFiles(input.orgId, input.repos ?? [], input.workspaceFileSelection, exec) : []

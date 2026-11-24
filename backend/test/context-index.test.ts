@@ -14,6 +14,7 @@ import {
 } from "../src/context/store";
 import { createSkillWithRevision, updateSkillWithRevision } from "../src/skills/repo";
 import { createScheduleForOrg } from "../src/schedules/service";
+import { ensureProject } from "../src/projects/repo";
 import { publishDocument } from "../src/knowledge/wiki";
 import { db } from "../src/db/client";
 import { schedules, skills } from "../src/db/schema";
@@ -144,6 +145,7 @@ describe("projector sync on write", () => {
     const schedule = await createScheduleForOrg(
       { orgId: org, userId: "user-ctx" },
       {
+        projectId: (await ensureProject(org, "ctx-project")).id,
         name: "Weekly backlog triage",
         cron: "0 10 * * 1",
         prompt: "Triage the backlog and post a summary.",

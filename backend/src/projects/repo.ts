@@ -146,3 +146,30 @@ export async function updateProjectForOrg(
     .returning();
   return row ?? null;
 }
+
+/**
+ * The project a run belongs to. A thread belongs to one project: a new thread
+ * takes the one its caller decided (an automation's) or its repository's, and
+ * every reply its thread's. `project` is the row a new thread reads its
+ * repository images and files from; a reply reads them from its root instead.
+ */
+export async function resolveRunProject(
+  input: {
+    readonly orgId: string | null;
+    readonly newThread: boolean;
+    readonly decidedProjectId: string | null;
+    readonly primaryRepo: string | null;
+    readonly threadProjectId: string | null;
+  },
+  exec: Executor = db,
+): Promise<{ project: ProjectRecord | null; projectId: string | null }> {
+  if (!input.orgId) return { project: null, projectId: null };
+  const decided = input.newThread && input.decidedProjectId
+    ? await getProjectForOrg(input.orgId, input.decidedProjectId, exec)
+    : null;
+  const project = decided ??
+    (input.primaryRepo && (input.newThread || !input.threadProjectId)
+      ? await ensureProject(input.orgId, input.primaryRepo, { repoFullName: input.primaryRepo }, exec)
+      : null);
+  return { project, projectId: input.newThread ? project?.id ?? null : input.threadProjectId ?? project?.id ?? null };
+}

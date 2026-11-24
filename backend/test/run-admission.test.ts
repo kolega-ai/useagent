@@ -10,7 +10,7 @@ import {
 } from "../src/commands/admission";
 import { acceptRunCommand } from "../src/commands";
 import { createChildSession } from "../src/runs/child-sessions";
-import { createOrgSession, json, uid } from "./helpers";
+import { createOrgSession, json, testProjectId, uid } from "./helpers";
 
 const OPERATION = `test-admission:${crypto.randomUUID()}`;
 
@@ -85,6 +85,7 @@ describe("durable run admission", () => {
     const schedule = await json<{ id: string }>("/api/schedules", {
       method: "POST",
       body: {
+        projectId: await testProjectId(session.cookies),
         name: "Admission schedule",
         cron: "0 4 * * *",
         prompt: "scheduled",

@@ -3,14 +3,14 @@ import { db } from "../src/db/client";
 import { runs, scheduleFirings } from "../src/db/schema";
 import { AUTOMATION_RUN_ORIGIN } from "../src/runs/origin";
 import type { ApiSchedule } from "../src/schedules/repo";
-import { createOrgSession, json } from "./helpers";
+import { createOrgSession, inTestProject, json } from "./helpers";
 
 test("product automation runs appear in activity and dashboard while internal runs stay private", async () => {
   const owner = await createOrgSession("project-activity");
   const other = await createOrgSession("project-activity-other");
   const created = await json<ApiSchedule>("/api/automations", {
     method: "POST", cookies: owner.cookies,
-    body: { name: "Catalog refresh", cron: "0 9 * * *", prompt: "Refresh", engine: "mock" },
+    body: await inTestProject(owner.cookies, { name: "Catalog refresh", cron: "0 9 * * *", prompt: "Refresh", engine: "mock" }),
   });
   expect(created.status).toBe(201);
   const prefix = crypto.randomUUID();

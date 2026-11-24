@@ -1,3 +1,4 @@
+import { ensureProject } from "../src/projects/repo";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../src/db/client";
@@ -152,6 +153,7 @@ describe("knowledge MCP gateway", () => {
       id: runId,
       orgId: orgA,
       userId: "user-A",
+      projectId: (await ensureProject(orgA, "gateway-project")).id,
       prompt: "ask",
       model: "claude-haiku-4-5",
       engine: "opencode",

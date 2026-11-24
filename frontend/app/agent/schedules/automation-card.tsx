@@ -5,6 +5,7 @@ import {
   RiDeleteBinLine,
   RiEditLine,
   RiHistoryLine,
+  RiLockLine,
   RiMore2Line,
   RiPlayLine,
   RiPlayMiniLine,
@@ -25,12 +26,15 @@ import { cx } from "@/utils/cx";
 import { InlineDeleteConfirm } from "@/components/shared/inline-delete-confirm";
 import { relativeTime } from "@/utils/format";
 import {
+  type AutomationAccess,
   cadenceLabel,
   lastRunAt,
   engineLabel,
   scheduleZone,
   type ScheduleRecord,
 } from "./schedules-data";
+
+export type { AutomationAccess };
 
 /**
  * One automation as a compact, stable-height list row: name + status chip,
@@ -49,6 +53,7 @@ export function AutomationCard({
   onHistory,
   onEdit,
   onDelete,
+  access,
 }: {
   schedule: ScheduleRecord;
   running: boolean;
@@ -58,11 +63,16 @@ export function AutomationCard({
   onHistory: (schedule: ScheduleRecord) => void;
   onEdit: (schedule: ScheduleRecord) => void;
   onDelete: (id: string) => Promise<void>;
+  access?: AutomationAccess;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const busy = running || mutating;
+  const canChange = access?.change ?? true;
+  const canStop = access?.stop ?? true;
+  // Pausing is a stop; switching back on is a change.
+  const canToggle = schedule.enabled ? canStop : canChange;
   const cadence = cadenceLabel(schedule.cron);
   const lastRun = lastRunAt(schedule);
 
@@ -127,10 +137,16 @@ export function AutomationCard({
               {lastRun ? `Ran ${relativeTime(lastRun)}` : "Not run yet"}
             </span>
           </p>
+          {access?.reason ? (
+            <p className="mt-1 flex items-center gap-1 text-caption-1-regular text-text-tertiary">
+              <RiLockLine className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{access.reason}</span>
+            </p>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Button
+          {canChange ? <Button
             variant="ghost"
             size="xs"
             className={cx(
@@ -144,11 +160,11 @@ export function AutomationCard({
             aria-label={`Run ${schedule.name} now`}
           >
             {running ? "Starting" : "Run now"}
-          </Button>
+          </Button> : null}
           <Switch
             size="sm"
             isSelected={schedule.enabled}
-            isDisabled={mutating}
+            isDisabled={mutating || !canToggle}
             onChange={(enabled) => onToggle(schedule.id, enabled)}
             aria-label={`${schedule.name} ${schedule.enabled ? "active" : "paused"}`}
           />
@@ -164,7 +180,7 @@ export function AutomationCard({
               <RiMore2Line className="size-4" aria-hidden />
             </DropdownTrigger>
             <DropdownPopover aria-label={`Actions for ${schedule.name}`} placement="bottom end" className="w-56">
-              <DropdownItem
+              {canChange ? <DropdownItem
                 className={cx(busy && "pointer-events-none opacity-50")}
                 onSelect={() => {
                   setMenuOpen(false);
@@ -173,7 +189,7 @@ export function AutomationCard({
               >
                 <RiPlayLine className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
                 <span className="text-body-2-medium">Run now</span>
-              </DropdownItem>
+              </DropdownItem> : null}
               <DropdownItem
                 onSelect={() => {
                   setMenuOpen(false);
@@ -183,7 +199,7 @@ export function AutomationCard({
                 <RiHistoryLine className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
                 <span className="text-body-2-medium">View history</span>
               </DropdownItem>
-              <DropdownItem
+              {canChange ? <DropdownItem
                 onSelect={() => {
                   setMenuOpen(false);
                   onEdit(schedule);
@@ -191,18 +207,20 @@ export function AutomationCard({
               >
                 <RiEditLine className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
                 <span className="text-body-2-medium">Edit automation</span>
-              </DropdownItem>
-              <DropdownDivider />
-              <DropdownItem
-                className="text-text-error-primary"
-                onSelect={() => {
-                  setMenuOpen(false);
-                  setConfirmingDelete(true);
-                }}
-              >
-                <RiDeleteBinLine className="size-4 shrink-0" aria-hidden />
-                <span className="text-body-2-medium">Delete</span>
-              </DropdownItem>
+              </DropdownItem> : null}
+              {canStop ? <>
+                <DropdownDivider />
+                <DropdownItem
+                  className="text-text-error-primary"
+                  onSelect={() => {
+                    setMenuOpen(false);
+                    setConfirmingDelete(true);
+                  }}
+                >
+                  <RiDeleteBinLine className="size-4 shrink-0" aria-hidden />
+                  <span className="text-body-2-medium">Delete</span>
+                </DropdownItem>
+              </> : null}
             </DropdownPopover>
           </Dropdown>
         </div>

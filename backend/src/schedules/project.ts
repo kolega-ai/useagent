@@ -66,7 +66,8 @@ export async function resolveAutomationProject(input: {
     project = UUID.test(id) ? await findOrgProject(orgId, id) : null;
     if (!project) throw new AutomationProjectError("That project does not exist in this workspace.");
   } else if (typeof body.project === "string" && body.project.trim()) {
-    project = await repositoryProject(orgId, body.project.trim(), true);
+    // An existing project of the workspace, else a repository it can reach.
+    project = (await findOrgProject(orgId, body.project.trim())) ?? (await repositoryProject(orgId, body.project.trim(), true));
   } else if (input.repos[0]) {
     project = await repositoryProject(orgId, input.repos[0], false);
   } else if (input.codePolicy) {
