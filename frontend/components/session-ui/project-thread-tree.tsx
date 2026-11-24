@@ -10,6 +10,7 @@
 import {
   RiArrowDownSLine,
   RiArrowRightSLine,
+  RiCalendarScheduleLine,
   RiCheckLine,
   RiFileTextLine,
   RiFolderLine,
@@ -44,6 +45,17 @@ export interface ProjectThread {
   origin?: RunConnector | null;
   children?: ProjectThread[];
   nativeChildren?: { rows: readonly NativeAgentRow[]; overflow: number } | null;
+  /** An automation row: a calendar mark unless its latest run needs attention. */
+  kind?: "automation";
+}
+
+/** A project's automations, folded into one row above its threads. Each row is
+ *  an automation; its children are the runs worth showing (one running now, or
+ *  the one the page is on). `total` counts every automation in the project. */
+export interface ProjectAutomations {
+  rows: ProjectThread[];
+  total: number;
+  href: string;
 }
 
 /** A project folder and its threads. `key` is the stable expansion identity;
@@ -54,6 +66,7 @@ export interface ProjectGroup {
   label: string;
   fullName: string | null;
   threads: ProjectThread[];
+  automations?: ProjectAutomations;
 }
 
 /** Open/close control handed to the per-project menu so a right-click on the
@@ -120,6 +133,8 @@ function ThreadItem({
           <span role="img" aria-label={status.label} title={status.label}>
             <StatusDot {...status.dot} />
           </span>
+        ) : thread.kind === "automation" ? (
+          <RiCalendarScheduleLine className="size-4 text-foreground-icon-tertiary" aria-hidden />
         ) : thread.status === "completed" ? (
           <span role="img" aria-label="Completed" title="Completed">
             <RiCheckLine className="size-4 text-lime-600" aria-hidden />
@@ -355,6 +370,60 @@ export function retainThreadTreeActiveId(
   return activeId && ids.includes(activeId) ? activeId : ids[0] ?? null;
 }
 
+/** The project's Automations row: folded by default, open while one of its
+ *  automations runs or the page is one of their runs. */
+function ProjectAutomationBranch({
+  automations,
+  projectLabel,
+  threadHref,
+  enabled,
+}: {
+  automations: ProjectAutomations;
+  projectLabel: string;
+  threadHref: (thread: ProjectThread) => string;
+  enabled: boolean;
+}) {
+  const live = automations.rows.some((row) =>
+    row.status === "running" || row.status === "queued" || row.isSelected ||
+    row.children?.some((child) => child.isSelected));
+  const [open, setOpen] = useState(live);
+  return (
+    <div className="flex w-full flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        tabIndex={enabled ? undefined : -1}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-8 w-full items-center gap-2 rounded-2lg pr-2 pl-6 text-text-secondary transition-colors duration-150 ease hover:bg-background-secondary-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+      >
+        <span className="flex w-4 shrink-0 items-center justify-center">
+          <RiCalendarScheduleLine className="size-4 text-foreground-icon-secondary" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left text-body-2-medium">Automations</span>
+        <span className="shrink-0 text-caption-1-medium tabular-nums text-text-tertiary">{automations.total}</span>
+        <RiArrowDownSLine className={cx("size-3.5 shrink-0", !open && "-rotate-90")} aria-hidden />
+      </button>
+      {open ? (
+        <div className="pl-4">
+          <ProjectThreadList
+            threads={automations.rows}
+            threadHref={threadHref}
+            ariaLabel={`Automations in ${projectLabel}`}
+            enabled={enabled}
+          />
+          <Link
+            href={automations.href}
+            tabIndex={enabled ? undefined : -1}
+            className="ml-6 block rounded-lg px-2 py-1 text-caption-1-regular text-text-tertiary transition-colors hover:bg-background-secondary-hover hover:text-text-secondary"
+          >
+            {automations.total > automations.rows.length ? `View all ${automations.total}` : "Manage automations"}
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Expandable project folder: clicking the row toggles its threads
  * (folder -> folder-open, threads slide in below with the tree connector).
@@ -423,6 +492,14 @@ function ProjectFolder({
         )}
       >
         <div className="overflow-hidden">
+          {group.automations && group.automations.total > 0 ? (
+            <ProjectAutomationBranch
+              automations={group.automations}
+              projectLabel={group.label}
+              threadHref={threadHref}
+              enabled={expanded}
+            />
+          ) : null}
           {group.threads.length > 0 ? (
             <>
               <ProjectThreadList
