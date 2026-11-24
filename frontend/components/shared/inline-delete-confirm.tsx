@@ -11,12 +11,15 @@ export function InlineDeleteConfirm({
   question,
   consequence,
   busy = false,
+  confirmLabel = "Delete",
   onCancel,
   onConfirm,
 }: {
   question: string;
   consequence: string;
   busy?: boolean;
+  /** The confirming button's word when the action is not a deletion ("Remove"). */
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -34,7 +37,7 @@ export function InlineDeleteConfirm({
           Cancel
         </Button>
         <Button variant="danger" size="small" disabled={busy} onClick={onConfirm}>
-          Delete
+          {confirmLabel}
         </Button>
       </div>
     </div>

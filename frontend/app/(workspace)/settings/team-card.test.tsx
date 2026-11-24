@@ -22,6 +22,9 @@ describe("team roles", () => {
     expect(memberRole("member,admin")).toBe("admin");
     expect(memberRole("admin,owner")).toBe("owner");
     expect(memberRole("editor")).toBe("member");
+    // A project member holds no other role; with one beside it, the other role wins.
+    expect(memberRole("project_member")).toBe("project_member");
+    expect(memberRole("member,project_member")).toBe("member");
     expect(memberRole(undefined)).toBe("member");
   });
 
@@ -30,8 +33,8 @@ describe("team roles", () => {
     expect(canManageTeam("admin")).toBe(true);
     expect(canManageTeam("member")).toBe(false);
     expect(canManageTeam(null)).toBe(false);
-    expect(assignableRoles("owner")).toEqual(["owner", "admin", "member"]);
-    expect(assignableRoles("admin")).toEqual(["admin", "member"]);
+    expect(assignableRoles("owner")).toEqual(["owner", "admin", "member", "project_member"]);
+    expect(assignableRoles("admin")).toEqual(["admin", "member", "project_member"]);
   });
 
   test("nobody edits themselves, and an admin cannot touch an owner", () => {

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Menu } from "react-aria-components";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DropdownMenuItem } from "@/components/base/dropdown/dropdown";
-import { WorkspaceRow, sortedWorkspaces } from "./user-menu";
+import { opensOnlyProjects, WorkspaceRow, sortedWorkspaces } from "./user-menu";
 
 test("the picker puts the workspace the session is in first, then the rest by name", () => {
   const rows = sortedWorkspaces([
@@ -31,4 +31,25 @@ test("each row names the workspace, the person's role in it, and marks the one t
   // The role sits beside its own workspace: after the first name, before the second.
   expect(html.indexOf("Priya")).toBeLessThan(html.indexOf(">Owner<"));
   expect(html.indexOf(">Owner<")).toBeLessThan(html.indexOf("Acme"));
+});
+
+test("a project member's menu leaves out the workspace's settings, apps and tour", () => {
+  expect(opensOnlyProjects([{ id: "k", name: "Kolega", role: "project_member", active: true }])).toBe(true);
+  expect(opensOnlyProjects([
+    { id: "k", name: "Kolega", role: "project_member", active: false },
+    { id: "p", name: "Own", role: "owner", active: true },
+  ])).toBe(false);
+  expect(opensOnlyProjects([{ id: "k", name: "Kolega", role: "member", active: true }])).toBe(false);
+  expect(opensOnlyProjects(undefined)).toBe(false);
+});
+
+test("a project member's row says so", () => {
+  const html = renderToStaticMarkup(
+    <Menu aria-label="Account menu">
+      <DropdownMenuItem id="k" textValue="Kolega">
+        <WorkspaceRow workspace={{ id: "k", name: "Kolega", role: "project_member", active: true }} />
+      </DropdownMenuItem>
+    </Menu>,
+  );
+  expect(html).toContain(">Project member<");
 });

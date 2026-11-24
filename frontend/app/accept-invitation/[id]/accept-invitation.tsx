@@ -7,6 +7,7 @@ import { Button } from "@/components/base/buttons/button";
 import { invalidateSession, useSession } from "@/lib/auth";
 import { backendFetch } from "@/lib/backend-fetch";
 import { invitationProblem } from "./invitation-problem";
+import { landingAfterJoin } from "./landing";
 
 /**
  * The page an invitation link opens. Signed out: send the person to sign in
@@ -28,6 +29,19 @@ export interface InvitationView {
   readonly role: string;
   /** Slack identities that will act as this person once they accept; shown, and confirmed by id. */
   readonly slackSenders?: readonly SlackSender[];
+  /** The projects a project member's invitation opens (absent from an older backend). */
+  readonly projects?: readonly string[];
+}
+
+/** How the invitation names the role: a project member with the projects it opens. */
+export function invitedAs(view: Pick<InvitationView, "role" | "projects">): string {
+  if (view.role === "admin") return "an admin";
+  if (view.role === "owner") return "an owner";
+  if (view.role !== "project_member") return "a member";
+  const names = view.projects ?? [];
+  if (names.length === 0) return "a project member";
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `a project member of ${list}`;
 }
 
 /** What accepting also authorises, said plainly, or nothing when nothing is attached. */
@@ -110,7 +124,7 @@ export function AcceptInvitation({ id }: { id: string }) {
     }
     invalidateSession();
     setJoined(true);
-    router.replace("/");
+    router.replace(await landingAfterJoin());
   };
 
   return (
@@ -139,12 +153,7 @@ export function AcceptInvitation({ id }: { id: string }) {
             </h1>
             <p className="text-body-2-regular text-text-secondary">
               {state.view.inviterEmail ?? "A teammate"} invited {state.view.email} as{" "}
-              {state.view.role === "admin"
-                ? "an admin"
-                : state.view.role === "owner"
-                  ? "an owner"
-                  : "a member"}
-              .
+              {invitedAs(state.view)}.
             </p>
             {slackSendersNotice(state.view.slackSenders) && (
               <p

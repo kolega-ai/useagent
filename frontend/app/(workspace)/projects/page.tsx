@@ -4,6 +4,7 @@ import { DashboardLiveRefresh } from "@/components/dashboard/dashboard-live-refr
 import { backendFetch } from "@/lib/backend-fetch";
 import { repositoryWebUrl } from "@/lib/project-links";
 import { decodeProjectRequests, projectData } from "./project-data";
+import { ProjectPeople } from "./project-people";
 import { ProjectRequestsPanel, ProjectWorkspace } from "./project-workspace";
 
 export const metadata: Metadata = { title: "Project - UseAgent" };
@@ -37,5 +38,6 @@ export default async function ProjectPage({ searchParams }: {
     data={projectData(repository, { runs, automations, tasks, requests: null })}
     requestsView={<Suspense fallback={<ProjectRequestsPanel repository={repository} requests={null} loading />}>
       <Requests repository={repository} result={requestResult} />
-    </Suspense>} /></>;
+    </Suspense>}
+    peopleView={<ProjectPeople repository={repository} />} /></>;
 }

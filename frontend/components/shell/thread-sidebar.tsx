@@ -27,6 +27,7 @@ import {
 } from "@/components/sidebar-kit/sidebar";
 import { useCapabilityCatalog } from "@/hooks/use-capability-catalog";
 import { AppSidebarFrame, NavRoutes, type Route } from "./app-sidebar-frame";
+import { railRoutesFor, useActiveWorkspaceRole } from "@/lib/workspace-role";
 import { SidebarProjects } from "./sidebar-projects";
 import { useSidebarThreads } from "./sidebar-threads-provider";
 import { WorkingProjectStatus } from "./working-project-status";
@@ -88,8 +89,9 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
   const isCollapsed = useRailFolded();
   const pathname = usePathname();
   const current = active ?? threadSidebarActiveFor(pathname);
+  const role = useActiveWorkspaceRole();
 
-  const routes: Route[] = [
+  const everyRoute: Route[] = [
     {
       id: "new",
       title: "New thread",
@@ -147,6 +149,7 @@ export function ThreadSidebar({ active }: { active?: ThreadSidebarActive }) {
       ],
     },
   ];
+  const routes = railRoutesFor(role, everyRoute);
 
   return (
     <AppSidebarFrame>
