@@ -57,6 +57,12 @@ payload instead of sending. Any partial or inconsistent configuration disables
 the connector with a warning rather than half-sending. Email is delivery-only
 today: it does not start runs.
 
+The SMTP relay is reached with implicit TLS on port 465 (or whenever
+`CONNECTOR_EMAIL_SECURE=true`); any other port starts in plain text and upgrades
+with STARTTLS, so a host that blocks 465 can use 587. The relay's certificate
+must be trusted and name `CONNECTOR_EMAIL_HOST`, and a login is never sent to a
+relay that does not offer STARTTLS.
+
 :::note
 Automations are themselves a channel in this sense: a durable scheduled trigger
 that submits work through the same command lane as an interactive user. New

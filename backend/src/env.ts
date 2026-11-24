@@ -137,9 +137,10 @@ export interface InvitationMailConfig {
 /**
  * Account mail (invitations, sign-up verification) reuses the connector's SMTP
  * settings (host, port, login, from) without its recipient allow-list, since
- * such mail goes to a new address by definition. The SMTP client speaks
- * implicit TLS, so the default port is 465. Null means no delivery: invitations
- * are shown as a link instead, and sign-up cannot open.
+ * such mail goes to a new address by definition. The default port is 465,
+ * spoken with implicit TLS; any other port (587) starts in plain text and
+ * upgrades with STARTTLS (connectors/email/smtp.ts). Null means no delivery:
+ * invitations are shown as a link instead, and sign-up cannot open.
  */
 export function invitationMailConfig(
   source: Record<string, string | undefined> = process.env,
