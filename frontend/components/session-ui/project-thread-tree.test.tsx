@@ -6,6 +6,7 @@ import {
   type ProjectGroup,
   type ProjectMenuControl,
   type ProjectThread,
+  ProjectThreadList,
   ProjectThreadTree,
   projectThreadTreeIds,
   retainThreadTreeActiveId,
@@ -224,4 +225,21 @@ test("a completed thread wears a check, every row drags as a chat, and a pin but
   expect(html).toContain('aria-label="Pin Fix the auth bug"');
   // Without a pin handler the rows carry no pin button.
   expect(renderTree([group()])).not.toContain('aria-label="Pin ');
+});
+
+test("a row that starts folded hides its children until opened; any other row shows them", () => {
+  const html = renderToStaticMarkup(
+    <ProjectThreadList
+      ariaLabel="Automations"
+      threadHref={(row) => `/session/${row.id}`}
+      threads={[
+        thread("automation:open", "Nightly check", { children: [thread("run-open", "Scheduled run")] }),
+        thread("automation:folded", "Weekly sweep", { startsFolded: true, children: [thread("run-folded", "Manual run")] }),
+      ]}
+    />,
+  );
+  expect(html).toContain('data-thread-tree-id="run-open"');
+  expect(html).not.toContain('data-thread-tree-id="run-folded"');
+  expect(html).toMatch(/data-thread-tree-id="automation:folded"/);
+  expect(html).toMatch(/aria-expanded="false"[^>]*data-thread-tree-id="automation:folded"/);
 });

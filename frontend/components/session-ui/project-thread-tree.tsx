@@ -47,11 +47,14 @@ export interface ProjectThread {
   nativeChildren?: { rows: readonly NativeAgentRow[]; overflow: number } | null;
   /** An automation row: a calendar mark unless its latest run needs attention. */
   kind?: "automation";
+  /** Its children start folded until opened (an automation's older runs). */
+  startsFolded?: boolean;
 }
 
 /** A project's automations, folded into one row above its threads. Each row is
- *  an automation; its children are the runs worth showing (one running now, or
- *  the one the page is on). `total` counts every automation in the project. */
+ *  an automation; its children are its recent runs, open on the most recent
+ *  automation, a running one and the one the page is on, folded on the rest.
+ *  `total` counts every automation in the project. */
 export interface ProjectAutomations {
   rows: ProjectThread[];
   total: number;
@@ -206,7 +209,8 @@ function ThreadBranch({
   const hasChildren = Boolean(
     thread.children?.length || thread.nativeChildren?.rows.length,
   );
-  const expanded = hasChildren && !collapsed.has(thread.id);
+  // `collapsed` holds the rows the person flipped from how they start.
+  const expanded = hasChildren && Boolean(thread.startsFolded) === collapsed.has(thread.id);
   return (
     <div
       role="treeitem"

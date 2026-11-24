@@ -6,9 +6,9 @@ import { ProjectThreadTree } from "@/components/session-ui/project-thread-tree";
 import { SidebarSectionToggle } from "@/components/shell/sidebar-nav";
 import { projectAutomationBranch, projectTreeHref } from "@/components/shell/sidebar-project-automations";
 
-// Real-shaped preview of a project's automations nested in the project tree:
-// one running (its run beneath it), one failed, one paused, and a project with
-// more automations than the rail shows.
+// Real-shaped preview of a project's automations nested in the project tree,
+// each with its recent runs: one running, one whose latest run failed, one
+// paused, and a project with more automations than the rail shows.
 const project = { id: "p-api", key: "acme/api", name: "api", repo: "acme/api" };
 const now = Date.parse("2026-10-29T12:00:00Z");
 const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -25,9 +25,12 @@ const automations: ScheduleRecord[] = [
   ] }),
   automation("lockfile", "Lockfile refresh", { last_run_at: ago(95), recent_firings: [
     { run_id: "lockfile-failed", fired_at: ago(95), trigger: "cron", run_status: "failed" },
+    { run_id: "lockfile-done-1", fired_at: ago(60 * 24 + 95), trigger: "cron", run_status: "completed" },
+    { run_id: "lockfile-done-2", fired_at: ago(60 * 48 + 95), trigger: "cron", run_status: "completed" },
   ] }),
   automation("docs", "API docs drift check", { last_run_at: ago(60 * 6), recent_firings: [
     { run_id: "docs-done", fired_at: ago(60 * 6), trigger: "cron", run_status: "completed" },
+    { run_id: "docs-manual", fired_at: ago(60 * 20), trigger: "manual", run_status: "completed" },
   ] }),
   automation("notes", "Release notes draft", { enabled: false }),
   automation("coverage", "Coverage report", { last_run_at: ago(60 * 30), recent_firings: [

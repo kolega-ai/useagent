@@ -13,20 +13,34 @@ function automation(id: string, extra: Partial<ScheduleRecord> = {}): ScheduleRe
     repos: [], code_policy: null, project_id: project.id, project, ...extra } as ScheduleRecord;
 }
 
-test("only a run in progress, or the one the page is on, sits under its automation", () => {
-  const busy = automation("busy", { last_run_at: "2026-10-29T12:00:00Z", recent_firings: [
-    { run_id: "live", fired_at: "2026-10-29T12:00:00Z", trigger: "manual", run_status: "running" },
-    { run_id: "old", fired_at: "2026-10-28T12:00:00Z", trigger: "cron", run_status: "completed" },
-    { run_id: "viewed", fired_at: "2026-10-27T12:00:00Z", trigger: "cron", run_status: "failed" },
-  ] });
-  const branch = projectAutomationBranch([busy], "acme/api", "/session/viewed");
-  const [row] = branch!.rows;
-  expect(row!.kind).toBe("automation");
-  expect(row!.children?.map((child) => [child.id, child.label, child.isSelected])).toEqual([
-    ["live", "Manual run", false],
-    ["viewed", "Scheduled run", true],
+test("each automation lists its recent runs, open on the most recent and on a running or viewed one", () => {
+  const runs = (prefix: string, newest: string, status = "completed") => [
+    { run_id: `${prefix}-1`, fired_at: newest, trigger: "manual", run_status: status },
+    { run_id: `${prefix}-2`, fired_at: "2026-10-20T12:00:00Z", trigger: "cron", run_status: "failed" },
+    { run_id: `${prefix}-3`, fired_at: "2026-10-19T12:00:00Z", trigger: "cron", run_status: "completed" },
+  ] as ScheduleRecord["recent_firings"];
+  const recent = automation("recent", { last_run_at: "2026-10-29T12:00:00Z", recent_firings: runs("r", "2026-10-29T12:00:00Z") });
+  const quiet = automation("quiet", { last_run_at: "2026-10-28T12:00:00Z", recent_firings: runs("q", "2026-10-28T12:00:00Z") });
+  const viewed = automation("viewed", { last_run_at: "2026-10-27T12:00:00Z", recent_firings: runs("v", "2026-10-27T12:00:00Z") });
+  const branch = projectAutomationBranch([quiet, viewed, recent], "acme/api", "/session/v-3");
+  const rows = new Map((branch?.rows ?? []).map((row) => [row.id, row]));
+  expect(rows.get("automation:recent")?.children?.map((child) => [child.id, child.label, child.status])).toEqual([
+    ["r-1", "Manual run", "completed"],
+    ["r-2", "Scheduled run", "failed"],
+    ["r-3", "Scheduled run", "completed"],
   ]);
-  expect(branch!.href).toBe("/agent/automations?repo=acme%2Fapi");
+  expect(rows.get("automation:quiet")?.children).toHaveLength(3);
+  expect(rows.get("automation:viewed")?.children?.find((child) => child.isSelected)?.id).toBe("v-3");
+  expect([...rows.values()].map((row) => [row.id, row.startsFolded])).toEqual([
+    ["automation:recent", false],
+    ["automation:quiet", true],
+    ["automation:viewed", false],
+  ]);
+  // A run in progress opens its automation wherever it ranks.
+  const running = automation("running", { last_run_at: "2026-10-01T12:00:00Z", recent_firings: runs("x", "2026-10-01T12:00:00Z", "running") });
+  const live = projectAutomationBranch([recent, running], "acme/api", null)?.rows.find((row) => row.id === "automation:running");
+  expect(live?.startsFolded).toBe(false);
+  expect(branch?.href).toBe("/agent/automations?repo=acme%2Fapi");
 });
 
 test("a paused automation says so; one never run shows no time and a calendar mark", () => {
