@@ -4,9 +4,10 @@ import { relativeTimeShort } from "@/utils/format";
 import { rankSidebarAutomations } from "./sidebar-automations";
 
 // A project's automations in the rail: one folded "Automations" row under the
-// project, its most active automations beneath it. Only a run in progress, or
-// the run the page is on, sits under its automation; older runs live on the
-// automations page, so a project's thread list is the threads people started.
+// project, its most active automations beneath it, each with its recent runs.
+// The runs are open under the most recent automation, a running one and the one
+// the page is on, and folded under the rest. Automation runs stay out of the
+// project's thread list, which is the threads people started.
 
 /** How many automations a project shows before "View all". */
 export const VISIBLE_PROJECT_AUTOMATIONS = 4;
@@ -39,10 +40,10 @@ export function projectAutomationBranch(
   pathname: string | null,
 ): ProjectAutomations | undefined {
   if (!automations?.length) return undefined;
-  const rows = rankSidebarAutomations(automations).slice(0, VISIBLE_PROJECT_AUTOMATIONS).map((automation): ProjectThread => {
+  const rows = rankSidebarAutomations(automations).slice(0, VISIBLE_PROJECT_AUTOMATIONS).map((automation, index): ProjectThread => {
     const firings = automation.recent_firings ?? [];
     const latest = firings[0];
-    const shown = firings.filter((firing) => live(firing.run_status) || pathname === `/session/${firing.run_id}`);
+    const open = index === 0 || firings.some((firing) => live(firing.run_status) || pathname === `/session/${firing.run_id}`);
     return {
       id: `${AUTOMATION_ROW_PREFIX}${automation.id}`,
       label: automation.name,
@@ -50,7 +51,8 @@ export function projectAutomationBranch(
       // A run that needs attention shows its status; otherwise a calendar mark.
       status: latest?.run_status ?? "completed",
       kind: "automation",
-      children: shown.map((firing) => ({
+      startsFolded: !open,
+      children: firings.map((firing) => ({
         id: firing.run_id,
         label: firing.trigger === "manual" ? "Manual run" : "Scheduled run",
         time: relativeTimeShort(firing.fired_at),
