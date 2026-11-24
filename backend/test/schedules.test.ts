@@ -11,7 +11,7 @@ import { AUTOMATION_RUN_ORIGIN } from "../src/runs/origin";
 import { previewNextRuns } from "../src/schedules/service";
 import { db } from "../src/db/client";
 import { runs, skillRevisions } from "../src/db/schema";
-import { createOrgSession, json, waitFor } from "./helpers";
+import { createOrgSession, inTestProject, json, testProjectId, waitFor } from "./helpers";
 import {
   freeModelLaneCache,
 } from "../src/runs/free-model-lane";
@@ -48,7 +48,7 @@ async function createSchedule(
 ): Promise<ApiSchedule> {
   const res = await json<ApiSchedule>("/api/schedules", {
     method: "POST",
-    body,
+    body: await inTestProject(cookies, body),
     cookies,
   });
   expect(res.status).toBe(201);
@@ -123,6 +123,7 @@ describe("schedules API", () => {
     const created = await json<ApiSchedule>("/api/automations", {
       method: "POST",
       body: {
+        projectId: await testProjectId(s.cookies),
         name: "Automation route smoke",
         cron: "0 11 * * 1-5",
         prompt: "prepare a weekday status note",

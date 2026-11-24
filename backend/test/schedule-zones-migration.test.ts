@@ -9,7 +9,7 @@ import { db } from "../src/db/client";
 import { scheduleFirings } from "../src/db/schema";
 import { getScheduleForOrg, type ApiSchedule } from "../src/schedules/repo";
 import { tick } from "../src/schedules/scheduler";
-import { createOrgSession, json, waitFor } from "./helpers";
+import { createOrgSession, inTestProject, json, waitFor } from "./helpers";
 import { testDatabaseUrl } from "./test-database";
 
 const MIGRATION = new URL("../drizzle/0114_schedule_zones.sql", import.meta.url);
@@ -54,7 +54,7 @@ async function enabledSchedule(label: string, cron: string, timezone: string) {
   const created = await json<ApiSchedule>("/api/schedules", {
     method: "POST",
     cookies: session.cookies,
-    body: { name: label, cron, timezone, prompt: `prompt ${label}`, engine: "mock" },
+    body: await inTestProject(session.cookies, { name: label, cron, timezone, prompt: `prompt ${label}`, engine: "mock" }),
   });
   expect(created.status).toBe(201);
   const enabled = await json<ApiSchedule>(`/api/schedules/${created.body.id}`, {

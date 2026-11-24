@@ -32,7 +32,7 @@ import { SpendAllowanceExceededError } from "../runs/spend";
 import { SandboxMinutesExceededError } from "../runs/sandbox-minutes";
 import { BotsDisabledError } from "../bots/rollout";
 import { RoutineOwnerError } from "../bots/owner";
-import { asOrgAdmin } from "../provider-connections/repo";
+import { asOrgAdmin, isOrgAdmin } from "../provider-connections/repo";
 import { selectThreadWorkspaceFiles, WorkspaceFileError } from "../workspace-files/store";
 import { memberDisplayNames } from "../team/member-names";
 import {
@@ -41,6 +41,7 @@ import {
 } from "../commands/prompt-policy";
 import { isValidCron, isValidTimezone, nextOccurrence } from "./cron";
 import { assertCodePolicyEngine, assertCodePolicyRepository, parseCodePolicy } from "./code-policy";
+import { AutomationProjectError, resolveAutomationProject } from "./project";
 import {
   createSchedule,
   deleteSchedule,
@@ -87,6 +88,37 @@ async function asAutomationActor<T>(
   });
 }
 
+/** What a viewer may do to each automation, by the rule asAutomationActor
+ *  enforces: the creator (or anyone, for one with no creator) changes it, an
+ *  admin may also pause or delete it, and the reason names who it runs as. */
+export interface AutomationAccess {
+  readonly change: boolean;
+  readonly stop: boolean;
+  readonly reason: string | null;
+}
+
+export async function automationAccessFor(
+  orgId: string,
+  viewerId: string | null,
+  automations: readonly { readonly id: string; readonly user_id: string | null }[],
+): Promise<Map<string, AutomationAccess>> {
+  const others = [...new Set(automations.map((item) => item.user_id).filter((id): id is string => id !== null && id !== viewerId))];
+  const admin = others.length > 0 && viewerId !== null && (await isOrgAdmin(orgId, viewerId));
+  const names = others.length > 0 ? await memberDisplayNames(orgId, others) : new Map<string, string>();
+  const access = new Map<string, AutomationAccess>();
+  for (const item of automations) {
+    if (item.user_id === null || item.user_id === viewerId) {
+      access.set(item.id, { change: true, stop: true, reason: null });
+      continue;
+    }
+    const runsAs = `Runs as ${names.get(item.user_id) ?? "the person who created it"}. Only they can change it or run it now.`;
+    access.set(item.id, admin
+      ? { change: false, stop: true, reason: `${runsAs} You can pause or delete it.` }
+      : { change: false, stop: false, reason: runsAs });
+  }
+  return access;
+}
+
 /** A change that only pauses: the one an admin may make to someone else's automation. */
 function pausesOnly(body: Record<string, unknown>): boolean {
   return body.enabled === false && Object.keys(body).every((key) => key === "enabled");
@@ -94,6 +126,15 @@ function pausesOnly(body: Record<string, unknown>): boolean {
 
 function publishAutomationChange(orgId: string, change: AutomationChange): void {
   publishOrgChange(orgId, change);
+}
+
+async function automationProject(input: Parameters<typeof resolveAutomationProject>[0]) {
+  try {
+    return await resolveAutomationProject(input);
+  } catch (error) {
+    if (error instanceof AutomationProjectError) throw new ScheduleServiceError(400, { error: error.message, message: error.message });
+    throw error;
+  }
 }
 
 export class ScheduleServiceError extends Error {
@@ -330,6 +371,7 @@ export async function createScheduleForOrg(
     const message = error instanceof Error ? error.message : "Invalid code automation policy.";
     throw new ScheduleServiceError(400, { error: message, message });
   }
+  const project = await automationProject({ orgId: identity.orgId, body, repos, codePolicy });
   const tags = stringArrayField(body, "tags") ?? [];
   const delivery = jsonObjectField(body, "delivery") ?? null;
   const notifications = jsonObjectField(body, "notifications") ?? null;
@@ -343,6 +385,7 @@ export async function createScheduleForOrg(
   const schedule = await createSchedule({
     orgId: identity.orgId,
     userId: identity.userId,
+    projectId: project.id,
     name,
     cron,
     timezone,
@@ -452,6 +495,7 @@ async function updateSchedulePatch(
     codePolicy: AutomationCodePolicy | null;
     enablementPolicy: AutomationJson | null;
     enabled: boolean;
+    projectId: string;
   }> = {};
 
   if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
@@ -543,6 +587,20 @@ async function updateSchedulePatch(
 
   const enablementPolicy = jsonObjectField(body, "enablementPolicy");
   if (enablementPolicy !== undefined) patch.enablementPolicy = enablementPolicy;
+
+  // Anything that places the automation (its project, repositories or
+  // repository work) is checked against its project again, and a legacy
+  // automation without one is asked for one then.
+  if (body.projectId !== undefined || body.project !== undefined || patch.repos !== undefined || patch.codePolicy !== undefined) {
+    const project = await automationProject({
+      orgId,
+      body,
+      repos: patch.repos ?? current.repos,
+      codePolicy: patch.codePolicy === undefined ? current.codePolicy : patch.codePolicy,
+      currentProjectId: current.projectId,
+    });
+    if (project.id !== current.projectId) patch.projectId = project.id;
+  }
 
   if (
     patch.engine !== undefined ||

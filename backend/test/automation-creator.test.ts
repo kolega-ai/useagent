@@ -8,7 +8,7 @@ import { executeAutomationToolLocal } from "../src/knowledge/gateway/automation-
 import { withOrgLock } from "../src/org-lock";
 import { asOrgAdmin } from "../src/provider-connections/repo";
 import { fireScheduleForOrg } from "../src/schedules/service";
-import { createOrgSession, fetchApi, joinOrg, json, userIdOf, type OrgSession } from "./helpers";
+import { createOrgSession, fetchApi, inTestProject, joinOrg, json, userIdOf, type OrgSession } from "./helpers";
 
 // An automation runs as its creator: their keys, allowance, sandbox minutes and
 // personal connections. So only the creator changes it or runs it now, from
@@ -35,7 +35,7 @@ async function createAutomation(session: OrgSession, prompt = "Summarise yesterd
   const created = await json<{ id: string }>("/api/schedules", {
     method: "POST",
     cookies: session.cookies,
-    body: { name: "Morning digest", cron: "0 9 * * *", prompt, engine: "mock" },
+    body: await inTestProject(session.cookies, { name: "Morning digest", cron: "0 9 * * *", prompt, engine: "mock" }),
   });
   expect(created.status).toBe(201);
   return created.body.id;
@@ -161,7 +161,7 @@ describe("an automation answers to its creator", () => {
     const routine = await json<{ routine: { id: string } }>(`${botPath}/routines`, {
       method: "POST",
       cookies: t.creator.cookies,
-      body: { name: "Weekly", cron: "0 9 * * 1", prompt: "Plan the week." },
+      body: await inTestProject(t.creator.cookies, { name: "Weekly", cron: "0 9 * * 1", prompt: "Plan the week." }),
     });
     expect(routine.status).toBe(201);
     const path = `${botPath}/routines/${routine.body.routine.id}`;

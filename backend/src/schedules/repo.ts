@@ -3,6 +3,7 @@ import { db, type Executor } from "../db/client";
 import {
   runs,
   automationCodeActions,
+  projects,
   scheduleFirings,
   schedules,
   type AutomationJson,
@@ -27,9 +28,22 @@ export interface ApiRecentFiring {
   run_status: typeof runs.$inferSelect.status;
 }
 
+/** The project an automation belongs to, as the list and the editor show it. */
+export interface ApiAutomationProject {
+  id: string;
+  key: string;
+  name: string;
+  /** The repository the project is, or null for a project with none. */
+  repo: string | null;
+}
+
 export interface ApiSchedule {
   id: string;
   org_id: string;
+  /** The project the automation belongs to; null only on a legacy automation
+   *  that named no repository (it is asked for on its next save). */
+  project_id: string | null;
+  project: ApiAutomationProject | null;
   /** Creator identity — the user who created the schedule (its firing actor). */
   user_id: string | null;
   name: string;
@@ -108,10 +122,30 @@ export function nextRunAt(
   return nextOccurrence(s.cron, s.timezone, new Date(firedThisMinute(s, now) ? minute + MINUTE_MS : minute));
 }
 
-function toSchedule(s: ScheduleRecord, lastRunAt: Date | null = s.lastFiredAt): ApiSchedule {
+type ProjectRecord = typeof projects.$inferSelect;
+
+function toProject(project: Pick<ProjectRecord, "id" | "key" | "displayName" | "repoFullName"> | null): ApiAutomationProject | null {
+  return project ? { id: project.id, key: project.key, name: project.displayName, repo: project.repoFullName } : null;
+}
+
+/** The automation's project row, read for a single-row answer (create, update). */
+async function projectOf(s: ScheduleRecord, exec: Executor = db): Promise<ApiAutomationProject | null> {
+  if (!s.projectId) return null;
+  const [row] = await exec.select().from(projects)
+    .where(and(eq(projects.id, s.projectId), eq(projects.orgId, s.orgId))).limit(1);
+  return toProject(row ?? null);
+}
+
+function toSchedule(
+  s: ScheduleRecord,
+  lastRunAt: Date | null = s.lastFiredAt,
+  project: ApiAutomationProject | null = null,
+): ApiSchedule {
   return {
     id: s.id,
     org_id: s.orgId,
+    project_id: s.projectId,
+    project,
     user_id: s.userId,
     name: s.name,
     cron: s.cron,
@@ -148,7 +182,8 @@ function toSchedule(s: ScheduleRecord, lastRunAt: Date | null = s.lastFiredAt): 
 // Schedules
 // ---------------------------------------------------------------------------
 
-export async function listSchedules(orgId: string): Promise<ApiSchedule[]> {
+/** Every automation of the org, newest first, optionally only one project's. */
+export async function listSchedules(orgId: string, filter: { readonly projectId?: string } = {}): Promise<ApiSchedule[]> {
   // The newest firing of ANY trigger: a manual Run now records a firing but
   // never stamps last_fired_at (that is the cron loop's guard), so the list
   // reads the log rather than the guard.
@@ -176,12 +211,13 @@ export async function listSchedules(orgId: string): Promise<ApiSchedule[]> {
     ) recent
   )`;
   const rows = await db
-    .select({ schedule: schedules, lastRunAt, recentFirings })
+    .select({ schedule: schedules, lastRunAt, recentFirings, project: projects })
     .from(schedules)
-    .where(eq(schedules.orgId, orgId))
+    .leftJoin(projects, and(eq(projects.id, schedules.projectId), eq(projects.orgId, schedules.orgId)))
+    .where(and(eq(schedules.orgId, orgId), ...(filter.projectId ? [eq(schedules.projectId, filter.projectId)] : [])))
     .orderBy(desc(schedules.createdAt), desc(schedules.id));
   return rows.map((row) => ({
-    ...toSchedule(row.schedule, row.lastRunAt),
+    ...toSchedule(row.schedule, row.lastRunAt, toProject(row.project)),
     recent_firings: row.recentFirings.map((firing) => ({ ...firing, fired_at: new Date(firing.fired_at).toISOString() })),
   }));
 }
@@ -202,6 +238,7 @@ export async function getScheduleForOrg(
 export async function createSchedule(input: {
   orgId: string;
   userId: string | null;
+  projectId: string | null;
   name: string;
   cron: string;
   timezone: string;
@@ -230,6 +267,7 @@ export async function createSchedule(input: {
     .values({
       orgId: input.orgId,
       userId: input.userId,
+      projectId: input.projectId,
       name: input.name,
       cron: input.cron,
       timezone: input.timezone,
@@ -255,7 +293,7 @@ export async function createSchedule(input: {
       // enabled defaults FALSE at the column — never auto-fire on create.
     })
     .returning();
-  return toSchedule(row!);
+  return toSchedule(row!, row!.lastFiredAt, await projectOf(row!));
 }
 
 export async function updateSchedule(
@@ -287,6 +325,7 @@ export async function updateSchedule(
       | "codePolicy"
       | "enablementPolicy"
       | "enabled"
+      | "projectId"
     >
   >,
   options: { readonly expectedGeneration?: number; readonly requireNoCodePolicy?: boolean } = {},
@@ -298,7 +337,7 @@ export async function updateSchedule(
       ...(options.expectedGeneration === undefined ? [] : [eq(schedules.codeGeneration, options.expectedGeneration)]),
       ...(options.requireNoCodePolicy ? [isNull(schedules.codePolicy)] : [])))
     .returning();
-  return row ? toSchedule(row) : null;
+  return row ? toSchedule(row, row.lastFiredAt, await projectOf(row)) : null;
 }
 
 export async function deleteSchedule(orgId: string, id: string): Promise<boolean> {

@@ -8,7 +8,7 @@ import {
   publishRunLifecycleChange,
   type ClientOrgChange,
 } from "../src/runs/org-signals";
-import { BASE, ORIGIN, createOrgSession, fetchApi, json, uid, waitFor } from "./helpers";
+import { BASE, ORIGIN, createOrgSession, fetchApi, json, testProjectId, uid, waitFor } from "./helpers";
 
 type AutomationChange = Extract<ClientOrgChange, { type: "automation" }>;
 
@@ -154,6 +154,7 @@ describe("org changes stream", () => {
       const created = await json<{ id: string }>(route, {
         method: "POST",
         body: {
+          projectId: await testProjectId(owner.cookies),
           name: `Realtime ${route}`,
           cron: "0 11 * * 1-5",
           prompt: "prepare a weekday status note",

@@ -1,6 +1,6 @@
 "use client";
 
-import { RiCalendarScheduleLine, RiErrorWarningLine, RiTimeZoneLine } from "@remixicon/react";
+import { RiCalendarScheduleLine, RiErrorWarningLine, RiFolderLine, RiTimeZoneLine } from "@remixicon/react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/base/buttons/button";
 import { HintText } from "@/components/base/input/hint-text";
@@ -18,6 +18,7 @@ import { cx } from "@/utils/cx";
 import type { CreateScheduleInput } from "./schedules-api";
 import {
   automationEditorEngineOptions,
+  automationProjectRepo,
   cadenceLabel,
   reconcileAutomationEngine,
   type ScheduleRecord,
@@ -63,6 +64,8 @@ export function AutomationEditorModal({
   const [engine, setEngine] = useState("");
   const [model, setModel] = useState("");
   const [codeMode, setCodeMode] = useState<"none" | "agent" | "publish" | "review">("none");
+  // The project, by repository: every automation belongs to one, and its
+  // repository work (if any) happens in that repository.
   const [codeRepo, setCodeRepo] = useState("");
   const [codeDraft, setCodeDraft] = useState(true);
   const [allowSandboxActions, setAllowSandboxActions] = useState(true);
@@ -82,7 +85,7 @@ export function AutomationEditorModal({
     setEngine(schedule?.engine ?? "");
     setModel(schedule?.model ?? "");
     setCodeMode(schedule?.code_policy?.mode ?? (initialRepository && !schedule ? "agent" : "none"));
-    setCodeRepo(schedule?.code_policy?.repository ?? (schedule ? "" : initialRepository ?? ""));
+    setCodeRepo(schedule ? automationProjectRepo(schedule) : initialRepository ?? "");
     setCodeDraft(schedule?.code_policy?.draft ?? true);
     setAllowSandboxActions(schedule?.code_policy?.allowSandboxActions ?? true);
     setNativeAuto(schedule?.code_policy?.version === 2 && schedule.code_policy.nativeAuto === true);
@@ -110,7 +113,9 @@ export function AutomationEditorModal({
 
   const cronValid = looksLikeCron(cron);
   const needsSandboxAgent = codeMode !== "none" && runtimes[engine as EngineId]?.kind === "direct";
-  const canSubmit = Boolean(name.trim() && prompt.trim() && engine && cronValid && !busy && !needsSandboxAgent && (codeMode === "none" || codeRepo));
+  const canSubmit = Boolean(name.trim() && prompt.trim() && engine && cronValid && !busy && !needsSandboxAgent && codeRepo);
+  // Opened from a project, a new automation stays in it.
+  const projectFixed = Boolean(initialRepository && !schedule);
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -124,6 +129,7 @@ export function AutomationEditorModal({
         timezone: timezone.trim() || null,
         engine,
         workspaceFileSelection: codeMode === "none" ? [] : selectedFiles,
+        project: codeRepo,
         ...(model ? { model } : {}),
         ...(codeMode === "none" ? { codePolicy: null, ...(schedule?.code_policy ? { repos: [] } : {}) } : {
           repos: [codeRepo],
@@ -161,6 +167,23 @@ export function AutomationEditorModal({
             value={name}
             onChange={setName}
           />
+
+          <div className="flex flex-col gap-1.5">
+            <span id="automation-project-label" className="text-body-2-medium text-text-primary">Project</span>
+            {projectFixed ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border-button-default bg-background-secondary-default px-3 py-2">
+                <RiFolderLine className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+                <span className="truncate text-body-2-medium text-text-primary">{codeRepo}</span>
+              </div>
+            ) : (
+              <RepoMultiPicker repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose a project"
+                onChange={(items) => { const next = items.at(-1) ?? ""; if (next !== codeRepo) setSelectedFiles([]); setCodeRepo(next); }}
+                onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
+            )}
+            <HintText>{projectFixed
+              ? "Set by the project you started from."
+              : "Every automation belongs to one project. Its runs appear under that project."}</HintText>
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <label
@@ -253,16 +276,12 @@ export function AutomationEditorModal({
             <span id="automation-code-label" className="text-body-2-medium text-text-primary">Repository work</span>
             <Select aria-labelledby="automation-code-label" selectedKey={codeMode} onSelectionChange={(key) => setCodeMode(String(key) as "none" | "agent" | "publish" | "review")}>
               <SelectItem id="none">No repository action</SelectItem>
-              <SelectItem id="agent">Agent works in a repository</SelectItem>
+              <SelectItem id="agent">Agent works in the project repository</SelectItem>
               {schedule?.code_policy?.version === 1 && schedule.code_policy.mode === "publish" ? <SelectItem id="publish">Existing pull or merge request workflow</SelectItem> : null}
               {schedule?.code_policy?.version === 1 && schedule.code_policy.mode === "review" ? <SelectItem id="review">Existing review and merge workflow</SelectItem> : null}
             </Select>
             {codeMode !== "none" ? <>
               {needsSandboxAgent ? <HintText isInvalid>Choose a coding agent that runs in a sandbox.</HintText> : null}
-              <RepoMultiPicker repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose repository"
-                onChange={(items) => { const next = items.at(-1) ?? ""; if (next !== codeRepo) setSelectedFiles([]); setCodeRepo(next); }}
-                onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
-              {codeRepo ? <p className="break-all text-caption-1-regular text-text-secondary">{codeRepo}</p> : null}
               {(projects.find((project) => project.repo_full_name === codeRepo)?.workspace_files ?? []).map((file) => (
                 <Checkbox key={`${file.name}:${file.path}`} size="sm" isSelected={selectedFiles.includes(file.name)}
                   onChange={(checked) => setSelectedFiles((current) => checked ? [...new Set([...current, file.name])] : current.filter((name) => name !== file.name))}>

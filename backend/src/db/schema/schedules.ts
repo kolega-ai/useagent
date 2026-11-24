@@ -13,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { runs } from "./runs";
+import { projects } from "./projects";
 import { githubChangeSets } from "./github-publication";
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,10 @@ export const schedules = pgTable(
     runActorId: text("run_actor_id"),
     /** Owning bot: firings post into its home thread instead of a fresh root. */
     botId: uuid("bot_id").references(() => bots.id, { onDelete: "set null" }),
+    /** The project the automation belongs to; its runs land in it. Required for
+     *  every automation saved since projects owned automations (the service
+     *  enforces it); null only on a legacy row naming no repository. */
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     concurrency: jsonb("concurrency").$type<AutomationJson | null>(),
     queue: jsonb("queue").$type<AutomationJson | null>(),
     costLimits: jsonb("cost_limits").$type<AutomationJson | null>(),
@@ -94,6 +99,7 @@ export const schedules = pgTable(
     index("idx_schedules_org").on(t.orgId),
     index("idx_schedules_enabled").on(t.enabled),
     index("idx_schedules_org_created").on(t.orgId, t.createdAt, t.id),
+    index("idx_schedules_org_project").on(t.orgId, t.projectId),
   ],
 );
 

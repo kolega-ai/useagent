@@ -121,6 +121,9 @@ export interface RunCommandInput {
     readonly attachmentIds?: readonly string[];
     /** Server-owned selection from the automation; null inherits repository files. */
     readonly workspaceFileSelection?: readonly string[] | null;
+    /** Server-owned project for a new thread (an automation's); absent, a new
+     *  thread takes its repository's project and a reply always its thread's. */
+    readonly projectId?: string | null;
     /** Team-memory pool for the run — resolved at the boundary (explicit choice,
      *  parent inheritance, or the "org" default). Never taken from the sandbox. */
     readonly memoryScope: MemoryScope;

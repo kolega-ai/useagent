@@ -320,6 +320,10 @@ botsRoutes.post("/:id/routines", async (c) => {
     ...(row.model ? { model: row.model } : {}),
     ...(row.repos.length > 0 ? { repos: [...row.repos] } : {}),
     ...(skillId ? { skill: { id: skillId } } : {}),
+    // A routine belongs to a project like every automation: the bot's
+    // repository names it, or the request does.
+    ...(typeof body.projectId === "string" ? { projectId: body.projectId } : {}),
+    ...(typeof body.project === "string" ? { project: body.project } : {}),
   };
   try {
     const created = await createScheduleForOrg({ orgId, userId: c.get("userId") }, draft);

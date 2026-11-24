@@ -62,9 +62,32 @@ export function reconcileAutomationEngine(
 }
 
 /** Wire shape from `GET /api/automations` (snake_case, per the backend contract). */
+/** The project an automation belongs to, as the server reports it. */
+export interface AutomationProject {
+  id: string;
+  key: string;
+  name: string;
+  /** The repository the project is, or null for a project with none. */
+  repo: string | null;
+}
+
+/** What the viewer may do to this automation, as the server decides it: only its
+ *  creator changes it, switches it on or runs it now; an admin may also pause or
+ *  delete it. Absent means the viewer may do everything. */
+export interface AutomationAccess {
+  readonly change: boolean;
+  readonly stop: boolean;
+  readonly reason: string | null;
+}
+
 export interface ScheduleRecord {
   id: string;
   org_id: string;
+  /** Absent from a backend that predates projects owning automations. */
+  project_id?: string | null;
+  project?: AutomationProject | null;
+  /** On list responses: what the viewer may do. */
+  access?: AutomationAccess;
   user_id: string | null;
   name: string;
   cron: string;
@@ -384,4 +407,44 @@ export function runTone(status: string | null): DotTone {
     default:
       return "neutral";
   }
+}
+
+/** The repository of the project an automation belongs to: its project when the
+ *  server reports one, else the repository its work names (a legacy automation
+ *  from before projects owned automations), else none yet. */
+export function automationProjectRepo(automation: Pick<ScheduleRecord, "project" | "code_policy" | "repos">): string {
+  return automation.project?.repo ?? automation.code_policy?.repository ?? automation.repos[0]?.split(":", 1)[0] ?? "";
+}
+
+/** One project's automations on the automations page. */
+export interface AutomationProjectGroup {
+  readonly key: string;
+  readonly label: string;
+  /** The project's repository: what a new automation in this group belongs to. */
+  readonly repo: string | null;
+  readonly automations: ScheduleRecord[];
+}
+
+/** Which project group an automation sits in: its project, else its repository,
+ *  else the "No project" group of legacy automations. */
+export function automationGroupKey(automation: ScheduleRecord): string {
+  return automation.project?.id ?? (automationProjectRepo(automation) || NO_PROJECT);
+}
+
+const NO_PROJECT = "none";
+
+/** Automations by project, projects by name, legacy ones without a project last. */
+export function groupAutomationsByProject(automations: readonly ScheduleRecord[]): AutomationProjectGroup[] {
+  const groups = new Map<string, { label: string; repo: string | null; automations: ScheduleRecord[] }>();
+  for (const automation of automations) {
+    const key = automationGroupKey(automation);
+    const repo = automation.project ? automation.project.repo : automationProjectRepo(automation) || null;
+    const label = automation.project?.name ?? (repo ? repo.split("/").at(-1) ?? repo : "No project");
+    const group = groups.get(key) ?? { label, repo, automations: [] };
+    group.automations.push(automation);
+    groups.set(key, group);
+  }
+  return [...groups.entries()]
+    .map(([key, group]) => ({ key, ...group }))
+    .sort((a, b) => Number(a.key === NO_PROJECT) - Number(b.key === NO_PROJECT) || a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
 }

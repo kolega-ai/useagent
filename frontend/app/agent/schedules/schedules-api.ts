@@ -50,6 +50,8 @@ export interface CreateScheduleInput {
   repos?: string[];
   workspaceFileSelection?: string[];
   codePolicy?: AutomationCodePolicy | null;
+  /** The project it belongs to, by repository (every automation has one). */
+  project?: string;
 }
 
 export async function createSchedule(

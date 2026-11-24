@@ -19,7 +19,7 @@ import {
   stopSlackOutboxRelay,
 } from "../src/slack/outbox";
 import { findSlackWorkspace, upsertSlackWorkspace } from "../src/slack/workspaces";
-import { createOrgSession, json, uid, waitFor, type OrgSession } from "./helpers";
+import { createOrgSession, inTestProject, json, uid, waitFor, type OrgSession } from "./helpers";
 
 const messages: Array<{ channel: string; text: string; threadTs?: string }> = [];
 const TEAM_ID = "T0AUTOMATION";
@@ -80,13 +80,13 @@ async function createAutomation(
 ): Promise<ApiSchedule> {
   const res = await json<ApiSchedule>("/api/automations", {
     method: "POST",
-    body: {
+    body: await inTestProject(s.cookies, {
       name: body.name ?? `Automation ${uid("a")}`,
       cron: "0 9 * * *",
       prompt: body.prompt ?? "produce the daily report",
       engine: "mock",
       ...body,
-    },
+    }),
     cookies: s.cookies,
   });
   expect(res.status).toBe(201);

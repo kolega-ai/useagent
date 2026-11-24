@@ -30,7 +30,7 @@ export default async function ProjectPage({ searchParams }: {
   const requestResult = read(`/api/projects/repository-requests?repo=${encoded}`);
   const [runs, automations, tasks] = await Promise.all([
     read(`/api/runs?view=summary&limit=100&include_active=1&repo=${encoded}`),
-    read("/api/automations"),
+    read(`/api/automations?project=${encoded}`),
     read(`/api/tasks?project=${encoded}`),
   ]);
   return <><DashboardLiveRefresh /><ProjectWorkspace repository={repository}

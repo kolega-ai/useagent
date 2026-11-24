@@ -109,6 +109,7 @@ export async function insertCommandWithRun(
         repos: cmd.run.repos,
         resolvedResources: cmd.run.resolvedResources,
         workspaceFileSelection: cmd.run.workspaceFileSelection,
+        projectId: cmd.run.projectId ?? null,
         memoryScope: cmd.run.memoryScope,
         permissionMode,
         runLocation,

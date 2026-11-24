@@ -37,7 +37,7 @@ import { sidebarNativeChildren } from "./native-children-projection";
 import { executionGraphEnabled } from "./execution-graph-switch";
 import { parseRepoRef } from "../github/repo-ref";
 import type { RunResource } from "../resources/types";
-import { ensureProject } from "../projects/repo";
+import { resolveRunProject } from "../projects/repo";
 import { selectThreadWorkspaceFiles } from "../workspace-files/store";
 import { listUploadsForRuns, type RunUploadDescriptor } from "../uploads/repo";
 import { publicRunCondition } from "./visibility";
@@ -221,6 +221,9 @@ export async function createRun(
     threadId: string;
     repos: string[];
     workspaceFileSelection?: readonly string[] | null;
+    /** The project a new thread belongs to when the caller decided it (an
+     *  automation's); a reply always takes its thread's. */
+    projectId?: string | null;
     resolvedResources?: readonly RunResource[];
     /** Team-memory pool for the run. Resolved server-side at the run-creation
      *  boundary (explicit choice, parent inheritance, or the "org" default). */
@@ -253,23 +256,16 @@ export async function createRun(
   if (!permissionModeSupported(input.engine, permissionMode)) {
     throw new PermissionModeUnsupportedError(input.engine, permissionMode);
   }
-  const primaryRepo = input.repos?.[0] ? parseRepoRef(input.repos[0]).repo : null;
-  const project =
-    input.orgId && primaryRepo
-      ? await ensureProject(
-          input.orgId,
-          primaryRepo,
-          { repoFullName: primaryRepo },
-          exec,
-        )
-      : null;
   // Replies inherit the root selection, including null on legacy threads.
   const [root] = input.id === input.threadId ? [] : await exec
-    .select({ repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryE2bTemplate: runs.repositoryE2bTemplate, repositoryLocalImage: runs.repositoryLocalImage, workspaceFiles: runs.workspaceFiles })
+    .select({ projectId: runs.projectId, repositorySnapshot: runs.repositorySnapshot, repositoryCubeSnapshot: runs.repositoryCubeSnapshot, repositoryBoxSnapshot: runs.repositoryBoxSnapshot, repositoryE2bTemplate: runs.repositoryE2bTemplate, repositoryLocalImage: runs.repositoryLocalImage, workspaceFiles: runs.workspaceFiles })
     .from(runs)
     .where(and(eq(runs.threadId, input.threadId), eq(runs.id, input.threadId),
       input.orgId === null ? isNull(runs.orgId) : eq(runs.orgId, input.orgId)))
     .limit(1);
+  const primaryRepo = input.repos?.[0] ? parseRepoRef(input.repos[0]).repo : null;
+  const { project, projectId } = await resolveRunProject({ orgId: input.orgId, newThread: input.id === input.threadId,
+    decidedProjectId: input.projectId ?? null, primaryRepo, threadProjectId: root?.projectId ?? null }, exec);
   const repositorySnapshot = input.id === input.threadId ? project?.daytonaSnapshot ?? null : root?.repositorySnapshot ?? null;
   const workspaceFiles = input.id === input.threadId
     ? input.orgId ? await selectThreadWorkspaceFiles(input.orgId, input.repos ?? [], input.workspaceFileSelection, exec) : []
@@ -292,7 +288,7 @@ export async function createRun(
     threadSeq: sql`(select coalesce(max(${runs.threadSeq}), 0) + 1 from ${runs} where ${runs.threadId} = ${input.threadId})`,
     orgId: input.orgId,
     userId: input.userId,
-    projectId: project?.id ?? null,
+    projectId,
     repositorySnapshot,
     repositoryCubeSnapshot: input.id === input.threadId ? project?.cubeSnapshot ?? null : root?.repositoryCubeSnapshot ?? null,
     repositoryBoxSnapshot: input.id === input.threadId ? project?.boxSnapshot ?? null : root?.repositoryBoxSnapshot ?? null,

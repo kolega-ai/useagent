@@ -181,12 +181,18 @@ async function createAutomation(
     return errorResult("automation_create always creates disabled automations; enable later with automation_update.");
   }
   try {
-    const input = { ...args };
-    if (input.engine === undefined) {
+    const input: Record<string, unknown> = { ...args };
+    const placed = input.project !== undefined || input.repos !== undefined;
+    if (input.engine === undefined || !placed) {
       const run = await getRunForOrg(claims.orgId, claims.runId);
       if (!run) return errorResult("Current run was not found for this automation capability.");
-      input.engine = run.engine;
-      if (input.model === undefined) input.model = run.model;
+      if (input.engine === undefined) {
+        input.engine = run.engine;
+        if (input.model === undefined) input.model = run.model;
+      }
+      // An automation made from a thread belongs to the thread's project
+      // unless the call names a project or repository of its own.
+      if (!placed && run.projectId) input.projectId = run.projectId;
     }
     const schedule = await createScheduleForOrg(
       { orgId: claims.orgId, userId: claims.userId || null },
