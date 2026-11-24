@@ -1,4 +1,5 @@
 import type { ToolCallResult } from "./tools";
+import { projectScopeFor, scopeReaches } from "../../projects/access";
 import type { GatewayToolDescriptor } from "./descriptor";
 import { errorResult, textResult } from "./tool-results";
 import {
@@ -242,7 +243,7 @@ async function getAutomation(
   const id = automationId(args);
   if (!id) return errorResult("automation_get requires an automation id.");
   const schedule = await getScheduleForOrg(claims.orgId, id);
-  if (!schedule) return automationNotFound();
+  if (!schedule || !(await reachedBy(claims, schedule.projectId))) return automationNotFound();
   return textResult(`Automation ${schedule.name} (${schedule.id}).`, {
     automation: automationSummary(schedule),
   });
@@ -280,7 +281,7 @@ async function automationHistory(
   const id = automationId(args);
   if (!id) return errorResult("automation_history requires an automation id.");
   const schedule = await getScheduleForOrg(claims.orgId, id);
-  if (!schedule) return automationNotFound();
+  if (!schedule || !(await reachedBy(claims, schedule.projectId))) return automationNotFound();
   const firings = await listFirings(schedule.id);
   return textResult(
     formatAutomationHistoryText(schedule, firings),
@@ -326,7 +327,9 @@ export async function executeAutomationToolLocal(
     }
   }
   if (name === "automation_list") {
-    const automations = await listSchedules(claims.orgId);
+    // A project member's agent sees their projects' automations, as they do.
+    const scope = await projectScopeFor(claims.orgId, claims.userId || null);
+    const automations = (await listSchedules(claims.orgId)).filter((item) => scopeReaches(scope, item.project_id));
     return textResult(
       automations.length === 0
         ? "No scheduled automations exist in this organization."
@@ -420,4 +423,9 @@ export async function executeAutomationTool(
   return origin
     ? executeThroughPrimaryApi(origin, claims, name, args)
     : executeAutomationToolLocal(claims, name, args);
+}
+
+/** Whether the run's person reaches the automation's project (projects/access.ts). */
+async function reachedBy(claims: ToolTokenClaims, projectId: string | null): Promise<boolean> {
+  return scopeReaches(await projectScopeFor(claims.orgId, claims.userId || null), projectId);
 }

@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { reachableThreadIds } from "../projects/access";
+import { ProjectAccessError } from "../projects/access";
 import type { AppEnv } from "../http";
 import {
   getPublicThreadRelationshipView,
@@ -100,8 +102,9 @@ routes.get("/relationships", async (c) => {
   const after = parseCursor(c.get("orgId"), c.req.query("cursor"));
   if (pageLimit === null || after === "invalid") return c.json({ error: "invalid_pagination" }, 400);
   const page = await listOrgThreadRelationships({ orgId: c.get("orgId"), limit: pageLimit, after });
+  const reachable = await reachableThreadIds(c.get("orgId"), c.get("projectScope"), page.relationships.map((item) => item.familyThreadId));
   return c.json({
-    relationships: page.relationships.map(wire),
+    relationships: page.relationships.filter((item) => !reachable || reachable.has(item.familyThreadId)).map(wire),
     has_more: page.hasMore,
     next_cursor: cursor(c.get("orgId"), page.next),
   });
@@ -305,6 +308,7 @@ routes.post("/:threadId/messages", async (c) => {
     if (error instanceof RunPromptTooLargeError) return c.json({ error: error.code }, 413);
     if (error instanceof UploadClaimError) return c.json({ error: "upload_unavailable" }, 409);
     if (error instanceof RunAdmissionClosedError) return c.json(error.body, 503);
+    if (error instanceof ProjectAccessError) return c.json(error.body, 403);
     if (error instanceof SpendAllowanceExceededError) return c.json(error.body, 402);
     if (error instanceof SandboxMinutesExceededError) return c.json(error.body, 402);
     if (error instanceof FleetQueueLimitError) return c.json({ error: error.code, retryable: true, limit: error.limit }, 429);

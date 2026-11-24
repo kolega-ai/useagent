@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { accountOnList } from "../security/account-allowlist";
+import { confinedToProjects } from "../projects/access";
 
 /** How many organisations one person may create, their personal one included:
  *  ORG_CREATE_LIMIT_PER_USER, a positive whole number, else 2. */
@@ -23,6 +24,10 @@ export async function organizationLimitReached(
   env: Record<string, string | undefined> = process.env,
 ): Promise<boolean> {
   if (accountOnList("OPERATOR_ACCOUNTS", person.email, env)) return false;
+  // A project member works only in the projects they were invited to: no
+  // workspace of their own, whichever door asks.
+  const memberships = await db.execute<{ role: string }>(sql`select role from member where user_id = ${person.id}`);
+  if (memberships.length > 0 && memberships.every((row) => confinedToProjects(row.role))) return true;
   const [row] = await db.execute(sql`
     select count(*)::int as created from member mine
     where mine.user_id = ${person.id} and not exists (

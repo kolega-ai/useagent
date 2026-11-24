@@ -42,6 +42,7 @@ import {
 import { isValidCron, isValidTimezone, nextOccurrence } from "./cron";
 import { assertCodePolicyEngine, assertCodePolicyRepository, parseCodePolicy } from "./code-policy";
 import { AutomationProjectError, resolveAutomationProject } from "./project";
+import { assertProjectAccess, ProjectAccessError } from "../projects/access";
 import {
   createSchedule,
   deleteSchedule,
@@ -75,6 +76,8 @@ async function asAutomationActor<T>(
 ): Promise<T> {
   const schedule = await getScheduleForOrg(orgId, scheduleId);
   if (!schedule) throw new ScheduleServiceError(404, { error: "schedule not found" });
+  // Nobody acts on an automation in a project they do not reach, whatever else they may do.
+  await reachProject(orgId, actorId, schedule.projectId);
   const creator = schedule.userId;
   if (creator === null || creator === actorId) return act();
   if (intent === "stop" && actorId !== null) {
@@ -126,6 +129,16 @@ function pausesOnly(body: Record<string, unknown>): boolean {
 
 function publishAutomationChange(orgId: string, change: AutomationChange): void {
   publishOrgChange(orgId, change);
+}
+
+/** The actor reaches the project (projects/access.ts), or the change is refused. */
+async function reachProject(orgId: string, actorId: string | null, projectId: string | null): Promise<void> {
+  try {
+    await assertProjectAccess(orgId, actorId, projectId);
+  } catch (error) {
+    if (error instanceof ProjectAccessError) throw new ScheduleServiceError(403, { error: error.code, message: error.message });
+    throw error;
+  }
 }
 
 async function automationProject(input: Parameters<typeof resolveAutomationProject>[0]) {
@@ -372,6 +385,7 @@ export async function createScheduleForOrg(
     throw new ScheduleServiceError(400, { error: message, message });
   }
   const project = await automationProject({ orgId: identity.orgId, body, repos, codePolicy });
+  await reachProject(identity.orgId, identity.userId, project.id);
   const tags = stringArrayField(body, "tags") ?? [];
   const delivery = jsonObjectField(body, "delivery") ?? null;
   const notifications = jsonObjectField(body, "notifications") ?? null;
@@ -461,13 +475,14 @@ export function updateScheduleForOrg(
   actorId: string | null,
   options: { readonly requireNoCodePolicy?: boolean } = {},
 ): Promise<ApiSchedule> {
-  return asAutomationActor(orgId, id, actorId, pausesOnly(body) ? "stop" : "change", () => updateSchedulePatch(orgId, id, body, options));
+  return asAutomationActor(orgId, id, actorId, pausesOnly(body) ? "stop" : "change", () => updateSchedulePatch(orgId, id, body, actorId, options));
 }
 
 async function updateSchedulePatch(
   orgId: string,
   id: string,
   body: Record<string, unknown>,
+  actorId: string | null,
   options: { readonly requireNoCodePolicy?: boolean },
 ): Promise<ApiSchedule> {
   const current = await getScheduleForOrg(orgId, id);
@@ -599,7 +614,10 @@ async function updateSchedulePatch(
       codePolicy: patch.codePolicy === undefined ? current.codePolicy : patch.codePolicy,
       currentProjectId: current.projectId,
     });
-    if (project.id !== current.projectId) patch.projectId = project.id;
+    if (project.id !== current.projectId) {
+      await reachProject(orgId, actorId, project.id);
+      patch.projectId = project.id;
+    }
   }
 
   if (

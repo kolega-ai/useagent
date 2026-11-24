@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { listedProjectIds } from "../projects/access";
 import type { AppEnv } from "../http.js";
 import { listUploadsForRuns } from "../uploads/repo.js";
 import {
@@ -32,9 +33,12 @@ export function registerRunReadRoutes(routes: Hono<AppEnv>): void {
     const limit = Number.isFinite(requestedLimit)
       ? Math.min(c.req.query("view") === "summary" ? 1_000 : 100, Math.max(1, requestedLimit))
       : 100;
+    const projectIds = listedProjectIds(c.get("projectScope"));
+    if (projectIds && c.req.query("view") !== "summary") return c.json({ error: "summary view required" }, 403);
     if (c.req.query("view") === "summary") {
       return c.json({
         runs: await listRunSummaries(c.get("orgId"), {
+          projectIds,
           all,
           limit,
           includeActive: c.req.query("include_active") === "1",

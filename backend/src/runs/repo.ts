@@ -476,6 +476,7 @@ export async function listRunSummaries(
     includeActive?: boolean;
     includeNativeChildren?: boolean;
     repository?: string;
+    /** Only threads in these projects (a project member's list). */ projectIds?: readonly string[];
   } = {},
 ): Promise<ApiRunSummary[]> {
   const limit = opts.limit ?? 100;
@@ -494,6 +495,9 @@ export async function listRunSummaries(
       where split_part(repo_ref.value, ':', 1) = ${opts.repository}
     )
   )` : sql``;
+  const projectFilter = !opts.projectIds ? sql``
+    : opts.projectIds.length === 0 ? sql`and false`
+    : sql`and root.project_id in (${sql.join(opts.projectIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
   const activeFilter = !opts.includeActive
     ? sql`false`
     : opts.all
@@ -562,7 +566,7 @@ export async function listRunSummaries(
       where root.org_id = ${orgId}
         and ${publicRunCondition(sql`root.origin`)}
         ${rootFilter}
-        ${repositoryFilter}
+        ${repositoryFilter} ${projectFilter}
     ), bounded_rows as (
       select *
       from summary_rows

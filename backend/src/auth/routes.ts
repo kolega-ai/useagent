@@ -1,4 +1,6 @@
 import { and, eq, gt, inArray } from "drizzle-orm";
+import { PROJECT_MEMBER_ROLE } from "../projects/access";
+import { grantInvitationProjects, orgProjectIds, recordInvitationProjects } from "../projects/members";
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { INVITATION_EXPIRES_IN_SECONDS, NO_WAY_IN, canSignIn, deliverInvitation } from "../auth-invitations";
@@ -59,8 +61,10 @@ routes.post("/api/auth/electron/token", async (c) => {
   if (origin !== "useagent:/") return c.json({ message: "Desktop token exchange requires the native app." }, 403);
   return auth.handler(c.req.raw);
 });
-const ROLE_MESSAGE = "Role must be owner, admin or member";
-const exactRole = (value: unknown): boolean => value === "owner" || value === "admin" || value === "member";
+const ROLE_MESSAGE = "Role must be owner, admin, member or project_member";
+const exactRole = (value: unknown): boolean =>
+  value === "owner" || value === "admin" || value === "member" || value === PROJECT_MEMBER_ROLE;
+const PROJECTS_MESSAGE = "Choose at least one project of this workspace for a project member";
 
 /** The library's rule: the origin header, else the referer; http(s) values match
  *  by origin, the desktop scheme by prefix; missing or the literal "null" fails. */
@@ -253,7 +257,17 @@ routes.post("/api/auth/organization/invite-member", async (c) => {
       if (!(await canSignIn(body.email as string))) return c.json({ message: NO_WAY_IN }, 400);
       const capped = overDailyInvites(manager);
       if (capped) return c.json({ message: capped.message }, capped.status);
-      return auth.handler(pinned(request, body, organizationId));
+      // A project member is invited to named projects of this workspace; nobody else to any.
+      const projectIds = body.role === PROJECT_MEMBER_ROLE ? await orgProjectIds(organizationId, body.projectIds) : [];
+      if (projectIds === null) return c.json({ message: PROJECTS_MESSAGE }, 400);
+      if (body.role !== PROJECT_MEMBER_ROLE && body.projectIds !== undefined) return c.json({ message: "Only a project member is invited to projects" }, 400);
+      const { projectIds: _named, ...libraryBody } = body;
+      const response = await auth.handler(pinned(request, libraryBody, organizationId));
+      if (response.ok && projectIds.length) {
+        const created = (await response.clone().json().catch(() => null)) as { id?: unknown } | null;
+        if (typeof created?.id === "string") await recordInvitationProjects(created.id, projectIds);
+      }
+      return response;
     });
   }
   const organizationId = await organisationOf(request, body);
@@ -444,6 +458,7 @@ routes.post("/api/auth/organization/accept-invitation", async (c) => {
     }
     const response = await auth.handler(request);
     if (response.ok && session) {
+      await grantInvitationProjects(target.organizationId, invitationId, session.user.id, null);
       const bound = await bindInvitedSlackSender(invitationId, session.user.id, confirmed);
       // Accepted, but the membership is already gone (removed in between): the
       // request goes back to the admins rather than waiting for nothing.

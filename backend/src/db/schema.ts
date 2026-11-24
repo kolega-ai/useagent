@@ -24,6 +24,7 @@ export * from "./schema/schedules";
 export * from "./schema/fleet";
 export * from "./schema/fleet-batches";
 export * from "./schema/projects";
+export * from "./schema/project-members";
 export * from "./schema/tasks";
 export * from "./schema/github-publication";
 export * from "./schema/free-models";

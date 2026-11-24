@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Executor } from "../db/client";
 import { projects } from "../db/schema";
 import type { RepositoryFile } from "../workspace-files/types";
@@ -172,4 +172,13 @@ export async function resolveRunProject(
       ? await ensureProject(input.orgId, input.primaryRepo, { repoFullName: input.primaryRepo }, exec)
       : null);
   return { project, projectId: input.newThread ? project?.id ?? null : input.threadProjectId ?? project?.id ?? null };
+}
+
+/** The repositories of these projects, or undefined when no filter applies. */
+export async function reachableRepositories(orgId: string, projectIds: readonly string[] | undefined): Promise<Set<string> | undefined> {
+  if (!projectIds) return undefined;
+  if (projectIds.length === 0) return new Set();
+  const rows = await db.select({ repo: projects.repoFullName }).from(projects)
+    .where(and(eq(projects.orgId, orgId), inArray(projects.id, [...projectIds])));
+  return new Set(rows.map((row) => row.repo).filter((repo): repo is string => Boolean(repo)));
 }

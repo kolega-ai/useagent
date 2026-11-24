@@ -1,4 +1,10 @@
 import { Hono } from "hono";
+import { scopeReaches, WORKSPACE_SCOPE } from "./access";
+import { addProjectMember, listProjectMembers, removeProjectMember } from "./members";
+import { asOrgAdmin } from "../provider-connections/repo";
+import { db } from "../db/client";
+import { user } from "../db/auth-schema";
+import { eq } from "drizzle-orm";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import { requestFromOperator } from "../operator/access";
@@ -43,7 +49,8 @@ projectsRoutes.get("/", async (c) => {
     includeArchived: c.req.query("scope") === "all",
     limit,
   });
-  return c.json({ projects: rows.map(toProject) });
+  const scope = c.get("projectScope");
+  return c.json({ projects: rows.filter((row) => !scope || scopeReaches(scope, row.id)).map(toProject) });
 });
 
 projectsRoutes.get("/repository-requests", async (c) => {
@@ -118,4 +125,45 @@ projectsRoutes.patch("/:id", async (c) => {
   if (!project && (changingImage || changingFiles)) return c.json({ error: "project changed while saving settings; reload and retry" }, 409);
   if (!project) return c.json({ error: "project not found" }, 404);
   return c.json(toProject(project));
+});
+
+// Project members: who besides the workspace's owners, admins and members can
+// open the project. Anyone who reaches the project sees the list; adding and
+// removing is an admin's, in the organisation's turn (asOrgAdmin).
+projectsRoutes.get("/:id/members", async (c) => {
+  const orgId = c.get("orgId");
+  const project = await getProjectForOrg(orgId, c.req.param("id"));
+  if (!project || !scopeReaches(c.get("projectScope") ?? WORKSPACE_SCOPE, project.id)) return c.json({ error: "project not found" }, 404);
+  return c.json({ members: await listProjectMembers(orgId, project.id) });
+});
+
+projectsRoutes.post("/:id/members", async (c) => {
+  const orgId = c.get("orgId");
+  const actorId = c.get("userId");
+  const project = await getProjectForOrg(orgId, c.req.param("id"));
+  if (!project) return c.json({ error: "project not found" }, 404);
+  const body = (await c.req.json().catch(() => null)) as { email?: unknown } | null;
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!email || !actorId) return c.json({ error: "email required" }, 400);
+  const outcome = await asOrgAdmin(orgId, actorId, async () => {
+    const [person] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1);
+    return person ? addProjectMember(orgId, project.id, person.id, actorId) : "not_in_workspace";
+  });
+  if (!outcome) return c.json({ error: "organization_admin_required" }, 403);
+  if (outcome.value === "not_in_workspace") {
+    return c.json({ error: "not_in_workspace", message: "They are not in this workspace yet. Send them an invitation." }, 404);
+  }
+  if (outcome.value === "workspace_member") return c.json({ error: "workspace_member", message: "They already see every project." }, 409);
+  return c.json({ members: await listProjectMembers(orgId, project.id) }, 201);
+});
+
+projectsRoutes.delete("/:id/members/:userId", async (c) => {
+  const orgId = c.get("orgId");
+  const actorId = c.get("userId");
+  const project = await getProjectForOrg(orgId, c.req.param("id"));
+  if (!project || !actorId) return c.json({ error: "project not found" }, 404);
+  const outcome = await asOrgAdmin(orgId, actorId, () => removeProjectMember(orgId, project.id, c.req.param("userId")));
+  if (!outcome) return c.json({ error: "organization_admin_required" }, 403);
+  if (!outcome.value.removed) return c.json({ error: "not a member of this project" }, 404);
+  return c.json({ paused_automations: outcome.value.paused });
 });

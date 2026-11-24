@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { ProjectAccessError } from "../projects/access";
 import type { AppEnv } from "../http";
 import {
   type EngineId,
@@ -439,9 +440,7 @@ export async function handleRunCreate(
         : await acceptRunCommand(commandInput);
   } catch (error) {
     if (error instanceof WorkspaceFileError) return c.json({ error: error.code, message: error.message }, 409);
-    if (error instanceof RunPromptTooLargeError) {
-      return c.json({ error: error.code }, 413);
-    }
+    if (error instanceof RunPromptTooLargeError) return c.json({ error: error.code }, 413);
     if (error instanceof PermissionModeUnsupportedError) return c.json({ error: error.code, engine: error.engine }, 400);
     if (error instanceof UploadClaimError) return c.json({ error: "upload_unavailable" }, 409);
     if (error instanceof ThreadFollowupTargetError) return c.json({ error: error.code }, error.status);
@@ -454,6 +453,7 @@ export async function handleRunCreate(
     }
     if (error instanceof RunAdmissionClosedError) return c.json(error.body, 503);
     if (error instanceof SpendAllowanceExceededError || error instanceof SandboxMinutesExceededError) return c.json(error.body, 402);
+    if (error instanceof ProjectAccessError) return c.json(error.body, 403);
     // Durable per-org queue ceiling exceeded — the server-side fan-out authority.
     if (error instanceof FleetQueueLimitError)
       return c.json({ error: error.code, retryable: true, limit: error.limit }, 429);

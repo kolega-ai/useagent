@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { organization } from "better-auth/plugins";
+import { adminAc, defaultAc, memberAc, ownerAc } from "better-auth/plugins/organization/access";
 import { and, eq } from "drizzle-orm";
 import { ensurePersonalOrgForUser, hasCredential, unverifiedClaim } from "./auth-hooks";
 import { organizationLimitReached } from "./auth/organization-limit";
@@ -93,6 +94,15 @@ export function createAuthServer() {
     advanced: { ipAddress: { trustedProxies: TRUSTED_PROXIES } },
     plugins: [
       organization({
+        // The library's three roles, and project members: invited to named
+        // projects, with no organisation permissions of their own. What they
+        // reach is decided by projects/access.ts, not by these statements.
+        roles: {
+          owner: ownerAc,
+          admin: adminAc,
+          member: memberAc,
+          project_member: defaultAc.newRole({ organization: [], member: [], invitation: [], team: [], ac: [] }),
+        },
         invitationExpiresIn: INVITATION_EXPIRES_IN_SECONDS,
         // The library stops an organisation at 100 members by default (ledger
         // G10); a real team never meets this one. ponytail: list-members answers
