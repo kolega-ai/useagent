@@ -1,3 +1,4 @@
+import type { ProjectScope } from "./projects/access";
 /** Shared Hono environment: org-scoping middleware populates these per request. */
 export type AppEnv = {
   Bindings: {
@@ -18,6 +19,8 @@ export type AppEnv = {
      *  must not treat the dev user as a person read this instead of resolving
      *  the session a second time. */
     identitySource?: "session" | "dev";
+    /** The projects the person reaches (projects/access.ts), set by orgScope. */
+    projectScope?: ProjectScope;
     /** Set only by the preview capability scope (runs/preview-capability.ts):
      *  the sandbox port a capability-authenticated preview request may reach. */
     previewPort?: number;

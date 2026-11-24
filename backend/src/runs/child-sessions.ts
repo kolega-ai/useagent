@@ -230,6 +230,8 @@ export async function createChildSession(input: {
         engine: input.engine,
         parentRunId: productChild ? null : input.parentRunId,
         threadId: childThreadId,
+        // A child thread works in its parent's project (a reply keeps its root's anyway).
+        projectId: parent.projectId,
         repos: [...intake.repos],
         resolvedResources: intake.resources,
         attachmentIds: [],

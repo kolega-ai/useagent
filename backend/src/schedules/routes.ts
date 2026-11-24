@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { listedProjectIds } from "../projects/access";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import {
@@ -31,7 +32,9 @@ schedulesRoutes.get("/", async (c) => {
   const orgId = c.get("orgId");
   const projectRef = c.req.query("project")?.trim();
   const project = projectRef ? await findOrgProject(orgId, projectRef) : null;
-  const listed = projectRef && !project ? [] : await listSchedules(orgId, project ? { projectId: project.id } : {});
+  const reachable = listedProjectIds(c.get("projectScope"));
+  const listed = (projectRef && !project ? [] : await listSchedules(orgId, project ? { projectId: project.id } : {}))
+    .filter((automation) => !reachable || (automation.project_id !== null && reachable.includes(automation.project_id)));
   const access = await automationAccessFor(orgId, c.get("userId") ?? null, listed);
   const automations = listed.map((automation) => ({ ...automation, access: access.get(automation.id) }));
   return c.json({ automations, schedules: automations });

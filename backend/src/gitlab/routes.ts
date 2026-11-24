@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../http";
 import { orgAdminScope, orgScope } from "../middleware/org";
+import { listedProjectIds } from "../projects/access";
+import { reachableRepositories } from "../projects/repo";
 import { isSafeGitRevision } from "../resources/github-resolver";
 import { normalizeGitLabRepository } from "../resources/gitlab-resolver";
 import { gitLabProject, gitLabProjects, gitLabRequest } from "./client";
@@ -36,7 +38,9 @@ gitlabRoutes.get("/projects", async (c) => {
   }
   const token = await gitLabToken(c.get("orgId"));
   if (!token) return c.json({ repos: [] });
-  try { return c.json({ repos: await gitLabProjects(token, search) }); }
+  // A project member is offered only their projects' repositories.
+  const reachable = await reachableRepositories(c.get("orgId"), listedProjectIds(c.get("projectScope")));
+  try { return c.json({ repos: (await gitLabProjects(token, search)).filter((repo) => !reachable || reachable.has(repo.full_name)) }); }
   catch { return c.json({ repos: [], error: "GitLab project search is unavailable" }, 503); }
 });
 

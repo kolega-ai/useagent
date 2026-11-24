@@ -8,6 +8,8 @@ import { isOrgAdmin } from "../provider-connections/repo";
 import type { AppEnv } from "../http";
 import { parsePreviewViewPath } from "../runs/preview-capability";
 import { firstOrgForUser, getDevContext } from "../seed";
+import { PROJECT_ACCESS_MESSAGE, projectScopeFor, WORKSPACE_SCOPE } from "../projects/access";
+import { projectMemberMayRequest } from "../projects/request-gate";
 
 /**
  * Resolve the active org + user for a request. Tenancy is server-resolved only —
@@ -126,6 +128,13 @@ export const orgScope = createMiddleware<AppEnv>(async (c, next) => {
     c.set("orgId", orgId);
     c.set("userId", userId);
     c.set("identitySource", "session");
+    // A project member reaches only their projects: the gate refuses every
+    // other route, and the lists it lets through read this scope to filter.
+    const scope = await projectScopeFor(orgId, userId);
+    c.set("projectScope", scope);
+    if (scope.kind === "projects" && !(await projectMemberMayRequest(orgId, scope, c.req.method, new URL(c.req.url)))) {
+      return c.json({ error: "project_member_forbidden", message: PROJECT_ACCESS_MESSAGE }, 403);
+    }
     return next();
   }
 
@@ -138,6 +147,7 @@ export const orgScope = createMiddleware<AppEnv>(async (c, next) => {
   c.set("orgId", dev.orgId);
   c.set("userId", dev.userId);
   c.set("identitySource", "dev");
+  c.set("projectScope", WORKSPACE_SCOPE);
   return next();
 });
 

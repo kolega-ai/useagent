@@ -19,6 +19,7 @@ import { dispatchReadyForUser } from "../engines/sandbox-login";
 import { withThreadLifecycleLock } from "../runs/thread-lifecycle-lock";
 import { assertRunAdmissionOpen } from "./admission";
 import { assertSpendAllowance, SpendAllowanceExceededError } from "../runs/spend";
+import { acceptedRunProjectId, assertProjectAccess } from "../projects/access";
 import { assertSandboxMinutes, SandboxMinutesExceededError } from "../runs/sandbox-minutes";
 import { assertRunPromptLimit } from "./prompt-policy";
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
@@ -357,6 +358,9 @@ async function acceptRunCommandWithOrigin(
         // still returns its original run), as a lock-free read of the committed
         // figure so this transaction takes no lock that could close a cycle.
         await assertSpendAllowance(input.orgId, input.actorId, tx);
+        // New work lands only in a project the actor reaches: a project member
+        // starts and continues threads in their own projects, whatever the door.
+        await assertProjectAccess(input.orgId, input.actorId, await acceptedRunProjectId(input.orgId, input.run, tx), tx);
         assertRunPromptLimit(intent.prompt);
         assertRunPromptLimit(input.run.prompt);
 

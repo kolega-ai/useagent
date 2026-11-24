@@ -1,4 +1,6 @@
 import { and, asc, count, desc, eq, gt, inArray } from "drizzle-orm";
+import { memberProjectIds, orgProjectIds, setMemberProjects } from "../projects/members";
+import { asOrgAdmin } from "../provider-connections/repo";
 import { Hono } from "hono";
 import { db } from "../db/client";
 import { invitation, member, organization, user } from "../db/auth-schema";
@@ -145,4 +147,28 @@ teamRoutes.get("/workspaces", async (c) => {
       defaultName: row.name === created,
     })),
   });
+});
+
+/** Each project member's projects, for the team list (admins). */
+teamRoutes.get("/project-members", async (c) => {
+  const orgId = c.get("orgId");
+  const userId = c.get("userId");
+  if (!orgId || !userId || !(await managerOf(orgId, userId))) return c.json({ error: "forbidden" }, 403);
+  return c.json({ projects: Object.fromEntries(await memberProjectIds(orgId)) });
+});
+
+/** Set exactly which projects a project member reaches. Projects taken away
+ *  pause the person's automations in them. An admin's, in the organisation's turn. */
+teamRoutes.put("/members/:userId/projects", async (c) => {
+  const orgId = c.get("orgId");
+  const actorId = c.get("userId");
+  if (!orgId || !actorId) return c.json({ error: "forbidden" }, 403);
+  const body = (await c.req.json().catch(() => null)) as { projectIds?: unknown } | null;
+  const wanted = Array.isArray(body?.projectIds) && body.projectIds.length === 0 ? [] : await orgProjectIds(orgId, body?.projectIds);
+  if (wanted === null) return c.json({ error: "projectIds must name projects of this workspace" }, 400);
+  const outcome = await asOrgAdmin(orgId, actorId, () => setMemberProjects(orgId, c.req.param("userId"), wanted, actorId));
+  if (!outcome) return c.json({ error: "organization_admin_required" }, 403);
+  if (outcome.value === "not_in_workspace") return c.json({ error: "not_in_workspace" }, 404);
+  if (outcome.value === "workspace_member") return c.json({ error: "workspace_member", message: "Make them a project member first." }, 409);
+  return c.json({ added: outcome.value.added, removed: outcome.value.removed, paused_automations: outcome.value.paused });
 });

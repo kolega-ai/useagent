@@ -6,6 +6,7 @@ import { freezeGitHubChangeSet, ensureGitHubPublicationReceipt } from "../github
 import { boundedText } from "../github/publication-repo-input";
 import { isSafeGitRevision } from "../resources/github-resolver";
 import { GITLAB_REPOSITORY_PREFIX, normalizeGitLabRepository } from "../resources/gitlab-resolver";
+import { projectScopeFor, scopeReaches } from "../projects/access";
 import { getRunForOrg, threadHasActiveRuns } from "../runs/repo";
 import { resolveRunSandbox, resolveSandboxBindingForSandbox } from "../sandboxes/binding";
 import { sandboxRuntimeLayout } from "../sandboxes/provider";
@@ -23,7 +24,10 @@ export async function prepareGitLabPublication(input: {
   readonly checkout?: typeof withGitLabCheckout;
 } = {}) {
   const run = await getRunForOrg(input.orgId, input.runId);
-  if (!run || run.userId !== input.userId) throw new Error("Thread is unavailable for publication.");
+  // Their own thread, in a project they still reach (projects/access.ts).
+  if (!run || run.userId !== input.userId || !scopeReaches(await projectScopeFor(input.orgId, input.userId), run.projectId)) {
+    throw new Error("Thread is unavailable for publication.");
+  }
   if (!run.sandboxId) throw new Error("This thread has no retained workspace to publish.");
   if (await threadHasActiveRuns(input.orgId, run.threadId)) throw new Error("Wait for the thread to finish before preparing a merge request.");
   const repository = normalizeGitLabRepository(input.repository);

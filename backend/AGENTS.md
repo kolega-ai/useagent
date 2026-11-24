@@ -40,6 +40,7 @@ below are relative to `backend/`.
 | Database errors and retries | `src/db/pg-errors.ts` (`isLockTimeout`, `isTransientDbError`), `src/db/transient-retry.ts` `withTransientDbRetry` |
 | Why a turn failed | `src/engines/turn-failure-classification.ts` `classifyTurnFailure` |
 | What reaches an upstream model | `src/provider-gateway/request-policy.ts`, limits in `src/provider-gateway/limits.ts` |
+| Who reaches which project | `src/projects/access.ts` (`projectScopeFor`, `assertProjectAccess` at the write); a project member's routes are allowlisted in `src/projects/request-gate.ts` (deny by default) |
 | Untrusted text in prompts | `src/bots/prompt-safe.ts` `promptSafeJson` |
 | Secrets in text | `src/secrets/redact.ts` |
 | Messaging channels | `src/connectors/types.ts` (`Transport`, `Renderer`), `src/connectors/email/` as the worked example |

@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { listedProjectIds } from "../projects/access";
+import { reachableRepositories } from "../projects/repo";
 import type { AppEnv } from "../http";
 import { orgScope } from "../middleware/org";
 import { githubOrgAccessErrorForOrg, listBranches, listRepos, listRepoTree } from "./repos";
@@ -24,7 +26,9 @@ reposRoutes.get("/", async (c) => {
   }
   if (accessError && !token) return c.json({ configured: true, repos: [], error: accessError }, 403);
   const github = accessError ? { configured: true, repos: [], error: accessError } : await listRepos(orgId);
-  return c.json({ configured: github.configured || Boolean(token), repos: [...github.repos, ...gitlab],
+  const reachable = await reachableRepositories(orgId, listedProjectIds(c.get("projectScope")));
+  const offered = [...github.repos, ...gitlab].filter((repo) => !reachable || reachable.has(repo.full_name));
+  return c.json({ configured: github.configured || Boolean(token), repos: offered,
     ...(github.error || gitlabError ? { error: [github.error, gitlabError].filter(Boolean).join(" ") } : {}) });
 });
 
