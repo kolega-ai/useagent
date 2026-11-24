@@ -44,6 +44,9 @@ import {
 } from "./sidebar-project-groups";
 import { SidebarProjectMenu } from "./sidebar-project-menu";
 import { useSidebarThreads } from "./sidebar-threads-provider";
+import { useSidebarAutomations } from "./sidebar-automations";
+import { automationsByProject, projectAutomationBranch, projectTreeHref } from "./sidebar-project-automations";
+import { automationProjectRepo } from "@/app/agent/schedules/schedules-data";
 import { useSidebarThreadRelationships } from "./sidebar-threads-provider";
 import { effectiveThreadStatus } from "./thread-discovery";
 
@@ -104,6 +107,13 @@ export function SidebarProjects() {
   const [projects, setProjects] = useState<ProjectRepo[]>([]);
   const runs = useSidebarThreads();
   const relationships = useSidebarThreadRelationships();
+  const { automations } = useSidebarAutomations();
+  // Each project's automations nest under it; their runs leave the thread lists.
+  const projectAutomations = useMemo(() => automationsByProject(automations), [automations]);
+  const automationRepos = useMemo(
+    () => new Map(automations.map((automation) => [automation.id, automationProjectRepo(automation)])),
+    [automations],
+  );
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [showEmptyProjects, setShowEmptyProjects] = useState(false);
   const [showAllThreads, setShowAllThreads] = useState(false);
@@ -183,9 +193,18 @@ export function SidebarProjects() {
     () => projectSidebarThreadFamilies(runs, relationships),
     [runs, relationships],
   );
+  // A project with automations is listed even when its repository is missing
+  // from the connected catalog: its automations still run there.
+  const knownProjects = useMemo(() => dedupeProjectRepos([
+    ...projects,
+    ...automations.flatMap((automation): ProjectRepo[] => {
+      const repo = automationProjectRepo(automation);
+      return repo ? [{ fullName: repo, name: automation.project?.name ?? repo.split("/").at(-1) ?? repo }] : [];
+    }),
+  ]), [projects, automations]);
   const groups = useMemo(
-    () => groupThreadsByProject(families.roots, projects),
-    [families.roots, projects],
+    () => groupThreadsByProject(families.roots.filter((run) => !run.automation), knownProjects),
+    [families.roots, knownProjects],
   );
 
   const focusedProject = useMemo(() => {
@@ -249,6 +268,9 @@ export function SidebarProjects() {
         key: group.key,
         label: group.name,
         fullName: group.fullName,
+        automations: group.fullName
+          ? projectAutomationBranch(projectAutomations.get(group.fullName), group.fullName, pathname)
+          : undefined,
         threads: group.threads.map((run): ProjectThread => {
           return {
             id: run.id,
@@ -265,21 +287,23 @@ export function SidebarProjects() {
         }),
       }));
     },
-    [families.childrenByParent, pathname],
+    [families.childrenByParent, pathname, projectAutomations],
   );
 
   // Projects with active threads stay in view; the long tail of empty repos sits
   // behind "Show N more" (they were flooding the rail); loose threads with no
   // project get their own bottom section with its own "Show N more".
   const activeProjects = useMemo(
-    () => groups.filter((group) => group.fullName !== null && group.threads.length > 0 && projectMatchesQuery(group, projectQuery) &&
+    () => groups.filter((group) => group.fullName !== null && (group.threads.length > 0 || projectAutomations.has(group.fullName)) &&
+      projectMatchesQuery(group, projectQuery) &&
       (!focusedProject || browseProjects || Boolean(projectQuery.trim()) || group.fullName === focusedProject)),
-    [groups, projectQuery, focusedProject, browseProjects],
+    [groups, projectQuery, focusedProject, browseProjects, projectAutomations],
   );
   const emptyProjects = useMemo(
-    () => groups.filter((group) => group.fullName !== null && group.threads.length === 0 && projectMatchesQuery(group, projectQuery) &&
+    () => groups.filter((group) => group.fullName !== null && group.threads.length === 0 && !projectAutomations.has(group.fullName) &&
+      projectMatchesQuery(group, projectQuery) &&
       (!focusedProject || browseProjects || Boolean(projectQuery.trim()) || group.fullName === focusedProject)),
-    [groups, projectQuery, focusedProject, browseProjects],
+    [groups, projectQuery, focusedProject, browseProjects, projectAutomations],
   );
   const independentThreads = useMemo(
     () => groups.find((group) => group.key === UNATTACHED_KEY)?.threads ?? [],
@@ -335,7 +359,7 @@ export function SidebarProjects() {
                 groups={toTree(displayedProjects)}
                 isExpanded={isExpanded}
                 onToggle={toggle}
-                threadHref={(thread) => `/session/${thread.id}`}
+                threadHref={(thread) => projectTreeHref(thread.id, automationRepos)}
                 projectHref={(group) => group.fullName ? projectHref(group.fullName) : null}
                 renderMenu={renderMenu}
                 onPinThread={(id) => bookmarks.add(userId, id)}

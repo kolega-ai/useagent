@@ -66,16 +66,13 @@ describe("collapsed application sidebar", () => {
     expect(renderCollapsed(<ThreadSidebar active="bots" />)).not.toContain('href="/bots"');
   });
 
-  test("keeps automations reachable when the rail is collapsed", () => {
-    const html = renderCollapsed(<ThreadSidebar />);
-    expect(html).toContain('href="/agent/automations"');
-    expect(html).toContain('aria-label="Automations"');
-  });
-
-  test("offers automations as a main navigation link when the rail is expanded", () => {
-    const html = renderSidebar(<ThreadSidebar />, true);
-    expect(html).toContain('href="/agent/automations"');
-    expect(html).toContain(">Automations</span>");
+  test("automations live under their projects, not in the main navigation", () => {
+    // The full list is reached from the Dashboard, a project and its "View all".
+    for (const html of [renderCollapsed(<ThreadSidebar />), renderSidebar(<ThreadSidebar />, true)]) {
+      expect(html).not.toContain('aria-label="Automations"');
+      expect(html).not.toContain(">Automations</span>");
+      expect(html).toContain('href="/dashboard"');
+    }
   });
 
   test("links a running automation directly from the collapsed rail", () => {

@@ -3,6 +3,7 @@
 import {
   type RemixiconComponentType,
   RiAddLine,
+  RiCalendarScheduleLine,
   RiFolderOpenLine,
   RiListCheck2,
   RiMore2Line,
@@ -21,7 +22,7 @@ import { cx } from "@/utils/cx";
 import { projectHref } from "@/lib/project-links";
 
 export interface ProjectMenuItem {
-  readonly key: "open-project" | "open-tasks" | "new-thread";
+  readonly key: "open-project" | "open-tasks" | "new-thread" | "new-automation";
   readonly label: string;
   readonly href: string;
 }
@@ -45,6 +46,11 @@ export function projectMenuItems(group: ProjectGroup): ProjectMenuItem[] {
       label: "New thread",
       href: `/agent/new?repo=${encodeURIComponent(group.fullName)}`,
     },
+    {
+      key: "new-automation",
+      label: "New automation",
+      href: `/agent/automations?repo=${encodeURIComponent(group.fullName)}&new=1`,
+    },
   ];
 }
 
@@ -52,6 +58,7 @@ const ITEM_ICON: Record<ProjectMenuItem["key"], RemixiconComponentType> = {
   "open-project": RiFolderOpenLine,
   "open-tasks": RiListCheck2,
   "new-thread": RiAddLine,
+  "new-automation": RiCalendarScheduleLine,
 };
 
 /**

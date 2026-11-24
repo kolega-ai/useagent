@@ -50,7 +50,7 @@ describe("unified shell contract", () => {
     expect(appShell.indexOf("<SidebarThreadsProvider>")).toBeLessThan(appShell.indexOf("{panel}"));
   });
 
-  test("keeps project threads and automations in the sidebar alongside primary navigation", () => {
+  test("keeps project threads and their automations in the sidebar alongside primary navigation", () => {
     const { threadSidebar, sidebarFrame } = shellSources();
     const projectTree = read("../session-ui/project-thread-tree.tsx");
     const userMenu = read("./user-menu.tsx");
@@ -75,8 +75,11 @@ describe("unified shell contract", () => {
     for (const label of displacedDestinations) {
       expect(threadSidebar).not.toContain(`title: "${label}"`);
     }
-    expect(threadSidebar).toContain("<SidebarAutomations />");
-    expect(threadSidebar).toContain('title: "Automations"');
+    // Automations nest under their projects in the tree; the full list is
+    // reached from the Dashboard, a project and its "View all", not the nav.
+    expect(threadSidebar).not.toContain("<SidebarAutomations />");
+    expect(threadSidebar).not.toContain('title: "Automations"');
+    expect(projectTree).toContain(">Automations<");
     // Settings moved into the account menu behind the footer card.
     expect(userMenu).toContain("Settings");
     expect(sidebarFrame).toContain("<UserMenu");
@@ -99,7 +102,6 @@ describe("unified shell contract", () => {
     ];
 
     expect(threadSidebar).toContain('title: "Customize"');
-    expect(threadSidebar).toContain('title: "Automations"');
     for (const label of librarySurfaces) {
       expect(librarySidebar).toContain(`label: "${label}"`);
     }
