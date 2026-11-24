@@ -8,6 +8,7 @@ import {
   confirmationToken,
   deliverVerification,
   invitedSignupAllowed,
+  pendingInvitationFor,
   readConfirmationToken,
 } from "../auth-invitations";
 import { db } from "../db/client";
@@ -194,7 +195,8 @@ export function createSignupRoutes(auth: Auth): Hono<AppEnv> {
   });
 
   /** The mailed link. The token is checked before anything is looked up. The
-   *  confirmation and the personal organisation land together, with the row
+   *  confirmation and the personal organisation (none for an address a pending
+   *  invitation names, which lands on its invitation instead) land together, with the row
    *  locked until both are in, so whoever looks at the account next (Slack
    *  admission, a second click) sees a confirmed person with a workspace, in
    *  whichever order things arrive. The registration the token names is
@@ -219,11 +221,16 @@ export function createSignupRoutes(auth: Auth): Hono<AppEnv> {
             .where(and(named, eq(user.emailVerified, true)))
             .for("update")
         )[0];
-      if (found) await ensurePersonalOrgForUser(found, tx);
-      return found ?? null;
+      if (!found) return null;
+      await ensurePersonalOrgForUser(found, tx);
+      return { ...found, invitationId: await pendingInvitationFor(found.email, tx) };
     });
     if (!account) return c.redirect(afterVerificationUrl("error=signup_replaced"));
-    return c.redirect(afterVerificationUrl("verified=1"));
+    // An invited person signs in straight into their invitation, to join the
+    // workspace that invited them (they were given no workspace of their own).
+    return c.redirect(afterVerificationUrl(account.invitationId
+      ? `verified=1&redirect_url=${encodeURIComponent(`/accept-invitation/${account.invitationId}`)}`
+      : "verified=1"));
   });
 
   /** The mail's "this was not me": the registration the token names goes away

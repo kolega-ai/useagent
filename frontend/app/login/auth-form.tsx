@@ -14,6 +14,7 @@ import { Input } from "@/components/base/input/input";
 import { type AuthConfig, invalidateSession, useAuthConfig } from "@/lib/auth";
 import { backendFetch } from "@/lib/backend-fetch";
 import { desktopBridge, type DesktopBridge } from "@/lib/desktop-bridge";
+import { signupOffer } from "./signup-offer";
 
 export type AuthMode = "signin" | "signup";
 
@@ -80,8 +81,9 @@ export function AuthForm({
     if (initialDesktopBridge === undefined) setDesktop(desktopBridge());
   }, [initialDesktopBridge]);
 
-  // A closed deployment ignores a request for the sign-up card.
-  const signup = authConfig?.emailPassword ? authConfig.signup : null;
+  // A closed deployment ignores a request for the sign-up card, and an
+  // invitation-only one offers it only to someone arriving from their invitation.
+  const signup = signupOffer(authConfig, callbackURL);
   const kind: AuthMode = signup && mode === "signup" ? "signup" : "signin";
   const copy = COPY[kind];
 

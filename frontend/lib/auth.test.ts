@@ -75,9 +75,15 @@ test("provider config uses the dedicated route and fails closed", async () => {
     emailPassword: false,
     allowDevOrg: false,
     invitationEmail: null, // the server did not say
-    signup: { inviteCode: true, domains: ["acme.com"] },
+    signup: { inviteCode: true, domains: ["acme.com"], invitationsOnly: false },
   });
   expect(seen).toEqual(["/api/auth/provider-config"]);
+
+  const invitationsOnly = (async () =>
+    Response.json({ emailPassword: true, signup: { inviteCode: false, domains: [], invitationsOnly: true } })) as unknown as Parameters<
+    typeof getAuthConfig
+  >[0];
+  expect((await getAuthConfig(invitationsOnly)).signup).toEqual({ inviteCode: false, domains: [], invitationsOnly: true });
 
   const unavailable = (async () => new Response(null, { status: 503 })) as unknown as Parameters<
     typeof getAuthConfig

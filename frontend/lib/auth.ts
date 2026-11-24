@@ -155,9 +155,10 @@ export interface AuthConfig {
   /** The deployment emails organisation invitations; otherwise the inviter shares the link. */
   /** Whether invitations go out by email; null until the server has said. */
   invitationEmail: boolean | null;
-  /** Open sign-up: whether an invite code is asked for and which email domains
-   *  are admitted (empty: any). Null when the deployment creates no accounts. */
-  signup: { inviteCode: boolean; domains: string[] } | null;
+  /** Open sign-up: whether an invite code is asked for, which email domains
+   *  are admitted (empty: any), and whether only invited addresses may sign up.
+   *  Null when the deployment creates no accounts. */
+  signup: { inviteCode: boolean; domains: string[]; invitationsOnly: boolean } | null;
 }
 
 const FALLBACK_CONFIG: AuthConfig = {
@@ -186,6 +187,8 @@ export async function getAuthConfig(
         ? {
             inviteCode: signup.inviteCode === true,
             domains: Array.isArray(signup.domains) ? signup.domains.filter((domain): domain is string => typeof domain === "string") : [],
+            // A backend from before the mode sends nothing: it is open sign-up.
+            invitationsOnly: signup.invitationsOnly === true,
           }
         : null,
     };
