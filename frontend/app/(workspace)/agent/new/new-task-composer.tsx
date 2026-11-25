@@ -24,6 +24,7 @@ import { engineProvider } from "@/components/chat/catalog-model-picker";
 import {
   engineRuntimeCaption,
   pickerEngineOptions,
+  NEW_THREAD_ENGINE,
   resolveEnabledEngine,
   useEnabledEngineConfig,
 } from "@/components/chat/engine-picker";
@@ -42,7 +43,7 @@ import {
   modelOptionsForEngine,
   type PermissionMode,
 } from "@/components/chat/types";
-import { defaultPermissionMode, permissionModeFor } from "@/components/chat/permission-mode";
+import { DEFAULT_PERMISSION_MODE, permissionModeFor } from "@/components/chat/permission-mode";
 import { PermissionModeChip } from "@/components/pro/permission-mode-chip";
 import { AgentThinking } from "@/components/application/agent-thinking/agent-thinking";
 import { ComposerLoader } from "@/components/application/composer-loader/composer-loader";
@@ -101,7 +102,7 @@ export function NewTaskComposer({
   const [selectedRepos, setSelectedRepos] = useState<string[]>([]);
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [playbook, setPlaybook] = useState(""); // selected skill/playbook id, "" = none
-  // Keep each engine's default until the person picks a mode.
+  // Bypass all until the person picks a mode (DEFAULT_PERMISSION_MODE).
   const [chosenMode, setChosenMode] = useState<PermissionMode | null>(null);
   // Where the thread runs: the desktop app's Local/Cloud menu sets it (Local
   // while this machine's runner is connected); the web app has no menu, sends
@@ -110,15 +111,15 @@ export function NewTaskComposer({
   useEffect(() => setBridge(desktopBridge()), []);
   const [runLocation, setRunLocation] = useState<RunLocation | null>(null);
   const onMachine = runLocation === "local";
-  // Codex is the preferred default engine. Model membership and the default
-  // arrive from the authenticated capability catalog below.
+  // A new thread starts on Kolega Code (NEW_THREAD_ENGINE). Model membership and
+  // the default arrive from the authenticated capability catalog below.
   const [model, setModel] = useState("");
   // A reasoning level from the picker; null runs on the runtime's default.
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
-  const [engine, setEngine] = useState<string>("codex");
+  const [engine, setEngine] = useState<string>(NEW_THREAD_ENGINE);
   // What actually rides POST /api/runs: the pick, unless the selected engine
   // cannot honour it (admission would refuse the run), then Full access.
-  const permissionMode = permissionModeFor(engine, chosenMode ?? defaultPermissionMode(engine));
+  const permissionMode = permissionModeFor(engine, chosenMode ?? DEFAULT_PERMISSION_MODE);
   // The "+" action shelf under the composer holds the add-context controls
   // (upload, repos, skills, GitHub, branches) so the toolbar row never overflows.
   const [addMenuOpen, setAddMenuOpen] = useState(false);

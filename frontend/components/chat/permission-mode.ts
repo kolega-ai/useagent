@@ -49,10 +49,8 @@ export function permissionModeOffered(engine: string | undefined, mode: Permissi
   return mode === "full-access" || engine !== "pi";
 }
 
-/** Keep the existing approval default for this native adapter. */
-export function defaultPermissionMode(engine: string | undefined): PermissionMode {
-  return engine === "kolega" ? "approval-required" : "full-access";
-}
+/** The mode a new thread starts on, on every engine, until the person picks one: Bypass all. */
+export const DEFAULT_PERMISSION_MODE: PermissionMode = "full-access";
 
 /** The mode a composer sends for `engine`: the one chosen when the engine can
  *  honour it, else Full access. The choice itself survives an engine switch

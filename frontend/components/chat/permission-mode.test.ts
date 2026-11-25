@@ -3,7 +3,7 @@ import {
   autoApplyEdits,
   autoApplyEditsHint,
   choiceForMode,
-  defaultPermissionMode,
+  DEFAULT_PERMISSION_MODE,
   modeForChoice,
   modeWithAutoApply,
   permissionModeFor,
@@ -48,8 +48,13 @@ describe("permission mode model", () => {
     expect(permissionModeOffered("kolega", "auto-accept-edits")).toBe(false);
     expect(permissionModeFor("kolega", "full-access")).toBe("full-access");
     expect(permissionModeFor("kolega", "auto-accept-edits")).toBe("approval-required");
-    expect(defaultPermissionMode("kolega")).toBe("approval-required");
-    expect(defaultPermissionMode("codex")).toBe("full-access");
+  });
+
+  test("a new thread starts on Bypass all on every engine, Kolega included", () => {
+    expect(DEFAULT_PERMISSION_MODE).toBe("full-access");
+    for (const engine of ["kolega", "codex", "claude", "pi", "opencode"]) {
+      expect(permissionModeFor(engine, DEFAULT_PERMISSION_MODE)).toBe("full-access");
+    }
   });
 
   test("the edits switch says what it really lets through on each engine", () => {
