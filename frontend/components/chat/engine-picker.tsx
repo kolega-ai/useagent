@@ -177,12 +177,17 @@ export function applyLocalLoginOffers<T extends EngineCatalogConfig>(
   return { ...config, localLoginOffered, modelDetails, models };
 }
 
+/** The engine a new thread starts on. */
+export const NEW_THREAD_ENGINE: EngineId = "kolega";
+/** Where a new thread falls back, in order, when the server has not enabled it. */
+const NEW_THREAD_FALLBACKS: readonly EngineId[] = ["codex"];
+
 export function resolveEnabledEngine(
   current: EngineId,
   enabled: readonly EngineId[],
 ): EngineId | null {
   if (enabled.includes(current)) return current;
-  return enabled[0] ?? null;
+  return [NEW_THREAD_ENGINE, ...NEW_THREAD_FALLBACKS].find((engine) => enabled.includes(engine)) ?? enabled[0] ?? null;
 }
 
 export function fallbackEnabledEngineConfig() {

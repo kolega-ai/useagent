@@ -4,6 +4,7 @@ import {
   engineRuntimeCaption,
   fallbackEnabledEngineConfig,
   modelCatalogNotice,
+  NEW_THREAD_ENGINE,
   reconcileSelectedModel,
   resolveEnabledEngine,
   unavailableModelOptions,
@@ -42,6 +43,17 @@ describe("engine model catalog", () => {
     expect(resolveEnabledEngine("opencode", ["chat"])).toBe("chat");
     expect(resolveEnabledEngine("chat", ["chat", "opencode"])).toBe("chat");
     expect(resolveEnabledEngine("opencode", [])).toBeNull();
+  });
+
+  test("a new thread starts on Kolega Code, then Codex, then the first engine the server enables", () => {
+    // The engines production enables, base engines first.
+    const enabled = ["mock", "opencode", "daytona", "chat", "kolega", "claude", "codex", "pi"] as const;
+    expect(NEW_THREAD_ENGINE).toBe("kolega");
+    expect(resolveEnabledEngine(NEW_THREAD_ENGINE, enabled)).toBe("kolega");
+    expect(resolveEnabledEngine("kolega", ["opencode", "chat", "codex"])).toBe("codex");
+    expect(resolveEnabledEngine("kolega", ["opencode", "chat"])).toBe("opencode");
+    // A person's own pick stays while the server enables it.
+    expect(resolveEnabledEngine("claude", enabled)).toBe("claude");
   });
 
   test("reconciles a removed reply model and blocks only when no replacement exists", () => {

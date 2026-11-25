@@ -149,8 +149,8 @@ describe("permission mode chip and tag", () => {
       new URL("../../app/(workspace)/agent/new/new-task-composer.tsx", import.meta.url),
       "utf8",
     );
-    expect(composer).toContain('import { defaultPermissionMode, permissionModeFor } from "@/components/chat/permission-mode";');
-    expect(composer).toContain("const permissionMode = permissionModeFor(engine, chosenMode ?? defaultPermissionMode(engine));");
+    expect(composer).toContain('import { DEFAULT_PERMISSION_MODE, permissionModeFor } from "@/components/chat/permission-mode";');
+    expect(composer).toContain("const permissionMode = permissionModeFor(engine, chosenMode ?? DEFAULT_PERMISSION_MODE);");
     expect(composer).toContain("permission_mode: permissionMode,");
     expect(composer).toContain("onChange={setChosenMode}");
     expect(composer).toContain("engine={engine}");
