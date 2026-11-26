@@ -25,7 +25,7 @@ amd64 and arm64:
    for the non-root layout by
    `backend/scripts/render-native-image.ts --layout local`: the native runtime,
    the engine bootstraps, Pi, the document toolchain, the desktop launcher and
-   its probe (a no-op on this base).
+   its probe (a no-op on this base), and the pinned agent command-line tools.
 
 The workflow publishes `ghcr.io/useagenthq/sandbox:<native image name>` and
 records its digest in the `local-sandbox-image.json` artifact. A deployment
