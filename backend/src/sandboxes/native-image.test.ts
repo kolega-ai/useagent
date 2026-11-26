@@ -181,10 +181,10 @@ ${desktopToolchainCommand(CUBE_LAYOUT)}
     }
   });
 
-  test("cover bun, the runtime, every driver, Pi, documents and desktop in order", () => {
+  test("cover bun, the runtime, every driver, Pi, documents, desktop and agent tools in order", () => {
     const steps = nativeImageSteps(BOX_LAYOUT, inputs());
     expect(steps.map((step) => step.name)).toEqual([
-      "bun", "native-runtime", "codex", "claude", "opencode", "boot", "pi", "acp-agent", "documents", "desktop",
+      "bun", "native-runtime", "codex", "claude", "opencode", "boot", "pi", "acp-agent", "documents", "desktop", "agent-tools",
     ]);
     for (const step of steps) {
       expect(step.command.startsWith("set -eu\nexport HOME='/home/user'\n")).toBe(true);
@@ -247,6 +247,17 @@ ${desktopToolchainCommand(CUBE_LAYOUT)}
     expect(box.command).toContain("allowed_users=anybody\nneeds_root_rights=no\n");
     expect(cube.command).toContain("allowed_users=anybody\nneeds_root_rights=yes\n");
   });
+
+  test("put the agent tools where the runtime's PATH finds them on each layout", () => {
+    const box = nativeImageSteps(BOX_LAYOUT, inputs()).find((step) => step.name === "agent-tools")!;
+    const cube = nativeImageSteps(CUBE_LAYOUT, inputs()).find((step) => step.name === "agent-tools")!;
+    expect(box.command).toContain("install -m 755 \"$binary\" '/home/user/.local/bin/rg'");
+    expect(box.command).toContain("install -m 755 \"$tmp/wrapper\" '/home/user/.local/bin/sentry'");
+    expect(box.command).toContain("install -m 755 \"$binary\" '/home/user/.local/lib/useagent/agent-tools/sentry'");
+    expect(cube.command).toContain("install -m 755 \"$binary\" '/usr/local/bin/rg'");
+    expect(cube.command).toContain("install -m 755 \"$tmp/wrapper\" '/usr/local/bin/sentry'");
+    expect(cube.command).toContain("install -m 755 \"$binary\" '/usr/local/lib/useagent/agent-tools/sentry'");
+  });
 });
 
 describe("native image Dockerfile", () => {
@@ -276,6 +287,7 @@ describe("native image Dockerfile", () => {
       "context/9-desktop/useagent-desktop-launch",
       "context/9-desktop/cdp-relay.mjs",
       "context/9-desktop.sh",
+      "context/10-agent-tools.sh",
     ]);
     // Every layer on top of the base: the workdir, the staged context, one RUN per step, the cleanup.
     // The base image already carries over a hundred layers; the runtime rejects images past its depth limit.
@@ -346,7 +358,7 @@ describe("applying the native image to a live sandbox", () => {
     expect(bunUploads.map((upload) => upload.bytes)).toEqual([3 * 1024 * 1024, 5]);
     expect(fake.commands.some((command) => command.includes("cat ") && command.includes("bun.part-0") && command.includes("bun.part-1"))).toBe(true);
     const stepCommands = fake.commands.filter((command) => command.startsWith("set -eu\nexport HOME="));
-    expect(stepCommands).toHaveLength(10);
+    expect(stepCommands).toHaveLength(11);
     expect(fake.uploads.at(-1)!.path).toBe(`/home/user/${SANDBOX_STATE_DIR}/cdp-relay.mjs`);
   });
 

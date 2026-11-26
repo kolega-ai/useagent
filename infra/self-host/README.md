@@ -132,6 +132,25 @@ the pinned CLI releases on its first turn. Tokens are supplied after sandbox
 allocation and must not be baked into a snapshot or template. Model-provider
 credentials continue to use the provider gateway.
 
+The recipe also installs pinned ripgrep (`rg`) and Sentry's agent CLI
+(`sentry`, from `getsentry/cli`). The `sentry` command on `PATH` is a wrapper
+that always runs the CLI with `SENTRY_CLI_NO_TELEMETRY=1` and
+`SENTRY_CLI_NO_UPDATE_CHECK=1`. To let agents read Sentry issues, store a
+repository file (below) that holds only the token and map it to `.sentryclirc`
+at the repository root; the CLI finds it from any directory in the checkout:
+
+```ini
+[auth]
+token = <Sentry auth token>
+```
+
+Outside development, organization secrets never reach the sandbox as
+environment variables, so a `SENTRY_AUTH_TOKEN` organization secret is not
+visible to agents there. Leave the organization and project slugs out of the
+file: every `name = value` line of a repository file is redacted from recorded
+output, so a slug stored there would be masked wherever it appears. Name them
+in the command instead, for example `sentry issue list my-org/my-project`.
+
 ### Repository files
 
 An operator can upload an encrypted file and place it into a repository checkout

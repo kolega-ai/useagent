@@ -1,7 +1,8 @@
 // The native image: one recipe for everything a fresh sandbox otherwise installs
 // at the start of a run. Bun, the native runtime (the T3 fork and its
-// dependencies), the codex, claude and opencode drivers, the Pi runtime, and
-// the document toolchain (LibreOffice, fonts, the Python office libraries).
+// dependencies), the codex, claude and opencode drivers, the Pi runtime, the
+// document toolchain (LibreOffice, fonts, the Python office libraries), and the
+// pinned command-line tools agents use from their shell (code search, issues).
 //
 // Every step is the same shell the run-time repair path uses, so a sandbox
 // born from the image passes each probe and the run only boots the runtime
@@ -37,6 +38,7 @@ import { BROWSER_LAUNCH_SCRIPT, desktopCdpRelaySource } from "../engines/desktop
 import { SANDBOX_STATE_DIR } from "./sandbox-names";
 import { buildDesktopLaunchScript, DESKTOP_REQUIRED_BINARIES } from "../engines/desktop-workstation";
 import { sourceControlToolInstallCommand } from "../engines/source-control-tools";
+import { agentCliToolInstallCommand } from "../engines/agent-cli-tools";
 
 /** Box accepts uploads of a few MB; larger files travel in parts and are joined in the sandbox. */
 const UPLOAD_PART_BYTES = 3 * 1024 * 1024;
@@ -395,6 +397,13 @@ export function nativeImageSteps(
         { path: `${home}/${SANDBOX_STATE_DIR}/cdp-relay.mjs`, bytes: Buffer.from(desktopCdpRelaySource(), "utf8") },
       ],
       command: desktopToolchainCommand(layout),
+      timeoutSeconds: 900,
+    },
+    {
+      // Last, so a rebuild that only changes these pins reuses every earlier layer.
+      name: "agent-tools",
+      files: [],
+      command: agentCliToolInstallCommand(layout),
       timeoutSeconds: 900,
     },
   ];
