@@ -176,8 +176,8 @@ export function AutomationEditorModal({
                 <span className="truncate text-body-2-medium text-text-primary">{codeRepo}</span>
               </div>
             ) : (
-              <RepoMultiPicker repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose a project"
-                onChange={(items) => { const next = items.at(-1) ?? ""; if (next !== codeRepo) setSelectedFiles([]); setCodeRepo(next); }}
+              <RepoMultiPicker single repos={repos} value={codeRepo ? [codeRepo] : []} emptyLabel="Choose a project"
+                onChange={(items) => { const next = items[0] ?? ""; if (next !== codeRepo) setSelectedFiles([]); setCodeRepo(next); }}
                 onDiscover={(repo) => setRepos((items) => items.some((item) => item.full_name === repo.full_name) ? items : [...items, repo])} />
             )}
             <HintText>{projectFixed

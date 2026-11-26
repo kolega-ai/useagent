@@ -34,6 +34,9 @@ export interface RepoMultiPickerProps {
   triggerClassName?: string;
   /** Trigger label when nothing is selected (defaults to "Repositories"). */
   emptyLabel?: string;
+  /** Pick one repository: a choice replaces the selection and closes the list,
+   *  and the trigger names the chosen repository instead of counting. */
+  single?: boolean;
 }
 
 const RECENTS_KEY = "useagent:recent-repos";
@@ -120,11 +123,20 @@ function readRecents(): string[] {
   }
 }
 
+/** The trigger's text: the chosen repository in single mode, otherwise a count. */
+export function repoPickerLabel(value: readonly string[], options: { emptyLabel?: string; single?: boolean } = {}): string {
+  const [first] = value;
+  if (first === undefined) return options.emptyLabel ?? "Repositories";
+  if (options.single) return first;
+  return `${value.length} selected`;
+}
+
 /**
  * Multi-select repository picker on the shared Command list grammar
  * (components/base/command): search row, "Recent" + per-org sections, checkbox
  * rows. Selecting toggles a repo and keeps the popover open; the trigger shows
- * the count ("N selected"). Filtering stays manual (the same repo appears in
+ * the count ("N selected"). In single mode a choice replaces the selection,
+ * closes the popover and the trigger names the repository. Filtering stays manual (the same repo appears in
  * both Recent and its org section, so cmdk's value-keyed filter can't own it).
  */
 export function RepoMultiPicker({
@@ -134,6 +146,7 @@ export function RepoMultiPicker({
   onDiscover,
   triggerClassName,
   emptyLabel,
+  single = false,
 }: RepoMultiPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -178,10 +191,16 @@ export function RepoMultiPicker({
   function toggle(fullName: string) {
     const discovered = remote.find((repo) => repo.full_name === fullName);
     if (!selectedSet.has(fullName) && discovered) onDiscover?.(discovered);
-    const next = selectedSet.has(fullName)
-      ? value.filter((r) => r !== fullName)
-      : [...value, fullName];
+    const next = single
+      ? [fullName]
+      : selectedSet.has(fullName)
+        ? value.filter((r) => r !== fullName)
+        : [...value, fullName];
     onChange(next);
+    if (single) {
+      setOpen(false);
+      setQuery("");
+    }
     // Record a newly-added repo as "recent" (dedupe, newest first, capped).
     if (!selectedSet.has(fullName)) {
       const nextRecents = [fullName, ...recents.filter((r) => r !== fullName)].slice(
@@ -228,8 +247,7 @@ export function RepoMultiPicker({
     return [...groups.entries()];
   }, [filtered]);
 
-  const triggerLabel =
-    value.length === 0 ? (emptyLabel ?? "Repositories") : `${value.length} selected`;
+  const triggerLabel = repoPickerLabel(value, { emptyLabel, single });
 
   return (
     <Dropdown
@@ -240,7 +258,7 @@ export function RepoMultiPicker({
       }}
     >
       <DropdownTrigger
-        aria-label="Select repositories"
+        aria-label={single ? "Select repository" : "Select repositories"}
         className={cx(
           "inline-flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-body-2-medium text-text-primary outline-none transition-colors hover:bg-background-primary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring",
           triggerClassName,
@@ -263,7 +281,7 @@ export function RepoMultiPicker({
             onValueChange={setQuery}
             onKeyDown={focusFirstCheckbox}
           />
-          <CommandList className="max-h-[288px]" aria-multiselectable>
+          <CommandList className="max-h-[288px]" aria-multiselectable={!single}>
             {filtered.length === 0 ? (
               <div className="px-2 py-2 text-body-2-medium text-text-tertiary">
                 {searching ? "Searching repositories..." : repos.length === 0 ? "No repositories available" : "No results"}
